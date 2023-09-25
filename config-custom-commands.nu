@@ -1,0 +1,66 @@
+def cco [] {
+    help commands | where category == default | get name | sort | to text | fzf
+}
+
+alias ngrok = op plugin run -- ngrok
+
+alias tf = terraform
+
+alias gd = cd (
+    glob /**/.git --depth 6 --no-file
+    | path dirname
+    | to text
+    | fzf
+)
+
+alias td = cd (
+    glob **/*.tf --depth 7 --not [**/modules/**]
+    | path dirname
+    | uniq
+    | to text
+    | fzf
+)
+
+alias cfg = code [
+    ([($env.HOME),'.zshrc'] | path join),
+    ($nu.env-path),
+    ($nu.config-path),
+]
+
+alias gol = ~/goland
+
+# convert json arrary with subscriptions (az login or az account list) to fzf selectable text
+def subfzf_az [] {
+    $in | from json | where state == 'Enabled' | select name id | each {|e| $'($e.name)@($e.id)'} | to text
+}
+
+# select subscription from a list of name@id
+def selectSubfzf [] {
+    $in | fzf | each {|r| if ($r | is-empty) {''} else {$r | split column '@' | get column2 | first }} | str join | str trim
+}
+
+# az account set, choosing sub. with fzf
+def as-az [] {
+    let getAccounts = { az account list --only-show-errors --output json | subfzf_az }
+    let accounts = do $getAccounts
+    let sel = if ($accounts | is-empty) { (i-az --subList) | selectSubfzf } else { $accounts | selectSubfzf}
+
+    if $sel != '' {
+        az account set --subscription ($sel)
+    }
+}
+
+# az login with default scope
+def i-az [
+    scope: string = 'https://graph.microsoft.com/.default'
+    --subList
+    ] {
+        let login = {az login --scope ($scope) --only-show-errors --output json}
+        if $subList {
+            do $login | subfzf_az
+        } else {
+            do $login | from json | print $"Available subscriptions: ($in | length)"
+        }
+}
+
+alias o-az = az logout
