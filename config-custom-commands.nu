@@ -1,11 +1,18 @@
+# overview of custom commands
 def cco [] {
     help commands | where category == default | get name | sort | to text | fzf
 }
 
+# clear
+alias cls = clear
+
+# start ngrok with 1password plugin
 alias ngrok = op plugin run -- ngrok
 
+# terraform
 alias tf = terraform
 
+# select a repo
 alias gd = cd (
     glob /**/.git --depth 6 --no-file
     | path dirname
@@ -13,6 +20,7 @@ alias gd = cd (
     | fzf
 )
 
+# select terraform solution (within a repo)
 alias td = cd (
     glob **/*.tf --depth 7 --not [**/modules/**]
     | path dirname
@@ -21,12 +29,14 @@ alias td = cd (
     | fzf
 )
 
+# config files to vs code
 alias cfg = code [
     ([($env.HOME),'.zshrc'] | path join),
     ($nu.env-path),
     ($nu.config-path),
 ]
 
+# start goland editor
 alias gol = ~/goland
 
 # convert json arrary with subscriptions (az login or az account list) to fzf selectable text
@@ -50,7 +60,7 @@ def as-az [] {
     }
 }
 
-# az login with default scope
+# az login
 def i-az [
     scope: string = 'https://graph.microsoft.com/.default'
     --subList
@@ -63,4 +73,5 @@ def i-az [
         }
 }
 
+# az logout
 alias o-az = az logout
