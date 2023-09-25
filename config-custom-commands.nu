@@ -1,18 +1,23 @@
-# overview of custom commands
+# gen - custom commands overview
 def cco [] {
-    help commands | where category == default | get name | sort | to text | fzf
+    help commands | where category == default and command_type in [custom alias] and usage != ''
+    | select name usage 
+    | sort-by usage 
+    | each {|e| $"(($e.name)| fill -a l -c ' ' -w 30)@($e.usage)"}
+    | to text 
+    | fzf | each {|r| if ($r | is-empty) {''} else {$r | split column '@' | get column1 | first }} | str join | str trim
 }
 
-# clear
+# gen - clear
 alias cls = clear
 
-# start ngrok with 1password plugin
+# app - ngrok as 1password plugin
 alias ngrok = op plugin run -- ngrok
 
-# terraform
+# app - terraform
 alias tf = terraform
 
-# select a repo
+# folder - select a repo
 alias gd = cd (
     glob /**/.git --depth 6 --no-file
     | path dirname
@@ -20,7 +25,7 @@ alias gd = cd (
     | fzf
 )
 
-# select terraform solution (within a repo)
+# folder - select terraform solution within a repo
 alias td = cd (
     glob **/*.tf --depth 7 --not [**/modules/**]
     | path dirname
@@ -29,27 +34,27 @@ alias td = cd (
     | fzf
 )
 
-# config files to vs code
+# gen - config files to vs code
 alias cfg = code [
     ([($env.HOME),'.zshrc'] | path join),
     ($nu.env-path),
     ($nu.config-path),
 ]
 
-# start goland editor
+# app - goland editor
 alias gol = ~/goland
 
-# convert json arrary with subscriptions (az login or az account list) to fzf selectable text
+# az - convert json arrary with subscriptions (az login or az account list) to fzf selectable text
 def subfzf_az [] {
     $in | from json | where state == 'Enabled' | select name id | each {|e| $'($e.name)@($e.id)'} | to text
 }
 
-# select subscription from a list of name@id
+# az - select subscription from a list of name@id
 def selectSubfzf [] {
     $in | fzf | each {|r| if ($r | is-empty) {''} else {$r | split column '@' | get column2 | first }} | str join | str trim
 }
 
-# az account set, choosing sub. with fzf
+# az - account set, choosing sub. with fzf
 def as-az [] {
     let getAccounts = { az account list --only-show-errors --output json | subfzf_az }
     let accounts = do $getAccounts
@@ -60,7 +65,7 @@ def as-az [] {
     }
 }
 
-# az login
+# az - login
 def i-az [
     scope: string = 'https://graph.microsoft.com/.default'
     --subList
@@ -73,5 +78,5 @@ def i-az [
         }
 }
 
-# az logout
+# az - logout
 alias o-az = az logout
