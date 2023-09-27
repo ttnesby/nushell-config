@@ -9,7 +9,7 @@ def fzf-concat [
     col2Name: string
 ] {
     let data = $in
-    let maxLength = $data | get $col1Name | str length | math max
+    let maxLength = $data | get $col1Name | str length | try { math max } catch { 0 }
     let col1 = $data | get $col1Name | each {|s| $"($s | fill -a l -c ' ' -w ($maxLength + 4))| " }
     let col2 = $data | get $col2Name
 
