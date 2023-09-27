@@ -53,15 +53,13 @@ alias gd = cd (
     )
 
 # cd - select terraform solution within a repo
-def td [] {
-    cd (
+alias td = cd (
         glob **/*.tf --depth 7 --not [**/modules/**]
         | path dirname
         | uniq
         | to text
         | fzf
-    )
-}
+        )
 
 # gen - config files to vs code
 alias cfg = code [
