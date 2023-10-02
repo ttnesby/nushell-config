@@ -18,6 +18,8 @@ def fzf-concat [
 
 # gen - custom commands overview
 def cco [] {
+    # look into scope commands | where is_custom == true and usage != '' | select name usage
+    # scope aliases | where usage != '' | select name usage
     let base = help commands | where category == default and command_type in [custom alias] and usage != ''
     let maxLength = $base | get name | str length | math max
 
