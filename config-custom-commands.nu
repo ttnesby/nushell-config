@@ -1,9 +1,9 @@
-# fzf - fzf selection to string
+# util - fzf selection to string
 def fzf-str [col: string = column1] {
     $in | fzf | each {|r| if ($r | is-empty) {''} else {$r | split column '|' | get $col | first }} | str join | str trim
 }
 
-# fzf - prepare a stream of two fields for fzf selection
+# util - prepare a stream of two fields for fzf selection
 def fzf-concat [
     col1Name: string
     col2Name: string
@@ -18,9 +18,11 @@ def fzf-concat [
 
 # gen - custom commands overview
 def cco [] {
-    let cmd = scope commands | where is_custom == true and usage != '' | select name usage
-    let ali =  scope aliases | where usage != '' | select name usage
-    $cmd | append $ali | sort-by usage | fzf-concat name usage | fzf-str
+    let withType = {|data| $data | select name | merge ($data | get usage | split column ' - ' type usage)}    
+    let cmd = scope commands | where is_custom == true and usage != '' and name not-in ['pwd'] | select name usage
+    let ali = scope aliases | where usage != '' | select name usage
+    
+    do $withType $cmd | append (do $withType $ali) | group-by type | sort
 }
 
 # gen - clear
@@ -32,7 +34,7 @@ alias ngrok = op plugin run -- ngrok
 # app - terraform
 alias tf = terraform
 
-# cd - list of git repos
+# util - list of git repos
 def git-repos [
     --update
 ] {
@@ -46,12 +48,13 @@ def git-repos [
     $master | open --raw
 }
 
+# cd - to git repo
 alias gd = cd (
     git-repos 
     | fzf
     )
 
-# cd - select terraform solution within a repo
+# cd - to terraform solution within a repo
 alias td = cd (
         glob **/*.tf --depth 7 --not [**/modules/**]
         | path dirname
@@ -70,12 +73,12 @@ alias cfg = code [
 # app - goland editor
 alias gol = ~/goland
 
-# az - convert json arrary with subscriptions (az login or az account list) to fzf selectable text
+# util - convert json arrary with subscriptions (az login or az account list) to fzf selectable text
 def subscription-fzf [] {
     $in | from json | where state == 'Enabled' | select name id | sort-by name | fzf-concat name id
 }
 
-# az - account set, choosing sub. with fzf
+# az - account set, choosing subscription with fzf
 def as-az [] {
     let getAccounts = { az account list --only-show-errors --output json | subscription-fzf }
     let accounts = do $getAccounts
