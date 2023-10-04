@@ -104,3 +104,29 @@ def i-az [
 
 # az - logout
 alias o-az = az logout
+
+# gen - dir content as grid, used in pwd hook
+def lsg [] = { ls | sort-by type name -i | grid -c }
+
+# op - development environment variables
+# def env-op [
+#     vault: string = Development
+#     type: string = env_var
+# ] {
+#     let docs = op item list --vault $vault --format json | from json | where category == SECURE_NOTE | select title
+#     let valref = {|i| if $i.type == 'CONCEALED' {$i.reference} else {$i.value}}
+#     let fields = {|t| 
+#         op item get $t --vault $vault --format json 
+#         | from json 
+#         | get fields
+#         | where label == type
+#         | 
+#         # | where label not-in ['notesPlain'] 
+#         # | reduce -f {} {|it, acc| $acc | merge {$it.label: (do $valref $it)} } 
+#         # | sort-by type
+#         # | group-by type
+#     }
+#         #| select label reference} 
+
+#     $docs | each {|d| do $fields $d.title}
+# }

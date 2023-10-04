@@ -2,6 +2,10 @@ $env.config = ($env.config | upsert hooks {
     env_change: {
         PWD: [
             {
+                condition:{|_,_| true}
+                code: {|_,_| print (lsg)}
+            }
+            {
                 condition: {|_, after|
                     let dir = '/Users/torsteinnesby/go/ttnesby/azure-alert-slack-notification'
                     let util = 'utilities.nu'
