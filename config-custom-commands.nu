@@ -1,3 +1,5 @@
+### util ################################################################################
+
 # util - fzf selection to string
 def fzf-str [col: string = column1] {
     $in | fzf | each {|r| if ($r | is-empty) {''} else {$r | split column '|' | get $col | first }} | str join | str trim
@@ -16,24 +18,6 @@ def fzf-concat [
     $col1 | zip $col2 | each {|r| $r.0 + $r.1 } | to text
 }
 
-# gen - custom commands overview
-def cco [] {
-    let withType = {|data| $data | select name | merge ($data | get usage | split column ' - ' type usage)}    
-    let cmd = scope commands | where is_custom == true and usage != '' and name not-in ['pwd'] | select name usage
-    let ali = scope aliases | where usage != '' | select name usage
-    
-    do $withType $cmd | append (do $withType $ali) | group-by type | sort
-}
-
-# gen - clear
-alias cls = clear
-
-# app - ngrok as 1password plugin
-alias ngrok = op plugin run -- ngrok
-
-# app - terraform
-alias tf = terraform
-
 # util - list of git repos
 def git-repos [
     --update
@@ -43,25 +27,33 @@ def git-repos [
 
     if $update or (not ($master | path exists)) {
         do $gitRepos | save --force $master
-    }    
+    }
 
     $master | open --raw
 }
 
-# cd - to git repo
-alias gd = cd (
-    git-repos 
-    | fzf
-    )
+# util - convert json arrary with subscriptions (az login or az account list) to fzf selectable text
+def subscription-fzf [] {
+    $in | from json | where state == 'Enabled' | select name id | sort-by name | fzf-concat name id
+}
 
-# cd - to terraform solution within a repo
-alias td = cd (
-        glob **/*.tf --depth 7 --not [**/modules/**]
-        | path dirname
-        | uniq
-        | to text
-        | fzf
-        )
+
+### gen ################################################################################
+
+# gen - custom commands overview
+def cco [] {
+    let withType = {|data| $data | select name | merge ($data | get usage | split column ' - ' type usage)}
+    let cmd = scope commands | where is_custom == true and usage != '' and name not-in ['pwd'] | select name usage
+    let ali = scope aliases | where usage != '' | select name usage
+
+    do $withType $cmd | append (do $withType $ali) | group-by type | sort
+}
+
+# gen - clear
+alias cls = clear
+
+# gen - dir content as grid, used in pwd hook
+def lsg [] = { ls | sort-by type name -i | grid -c }
 
 # gen - config files to vs code
 alias cfg = code [
@@ -70,13 +62,47 @@ alias cfg = code [
     ($nu.config-path),
 ]
 
+# gen - overlay list
+alias ol = overlay list
+
+# gen - overlay new
+alias on = overlay new
+
+# gen - overlay use
+alias ou = overlay use 
+
+# gen - overlay hide
+alias oh = overlay hide
+
+### app ################################################################################
+
+# app - ngrok as 1password plugin
+alias ngrok = op plugin run -- ngrok
+
+# app - terraform
+alias tf = terraform
+
 # app - goland editor
 alias gol = ~/goland
 
-# util - convert json arrary with subscriptions (az login or az account list) to fzf selectable text
-def subscription-fzf [] {
-    $in | from json | where state == 'Enabled' | select name id | sort-by name | fzf-concat name id
+
+### cd ################################################################################
+
+# cd - to git repo
+def-env gd [q: string = ''] { git-repos | fzf -q $q -1 | cd $in }
+
+# cd - to terraform solution within a repo
+def-env td [] { 
+    glob **/*.tf --depth 7 --not [**/modules/**]
+    | path dirname
+    | uniq
+    | to text
+    | fzf
+    | cd $in
 }
+
+
+### az ################################################################################
 
 # az - account set, choosing subscription with fzf
 def as-az [] {
@@ -105,8 +131,7 @@ def i-az [
 # az - logout
 alias o-az = az logout
 
-# gen - dir content as grid, used in pwd hook
-def lsg [] = { ls | sort-by type name -i | grid -c }
+### op ################################################################################
 
 # op - development environment variables
 # def env-op [
@@ -115,18 +140,18 @@ def lsg [] = { ls | sort-by type name -i | grid -c }
 # ] {
 #     let docs = op item list --vault $vault --format json | from json | where category == SECURE_NOTE | select title
 #     let valref = {|i| if $i.type == 'CONCEALED' {$i.reference} else {$i.value}}
-#     let fields = {|t| 
-#         op item get $t --vault $vault --format json 
-#         | from json 
+#     let fields = {|t|
+#         op item get $t --vault $vault --format json
+#         | from json
 #         | get fields
 #         | where label == type
-#         | 
-#         # | where label not-in ['notesPlain'] 
-#         # | reduce -f {} {|it, acc| $acc | merge {$it.label: (do $valref $it)} } 
+#         |
+#         # | where label not-in ['notesPlain']
+#         # | reduce -f {} {|it, acc| $acc | merge {$it.label: (do $valref $it)} }
 #         # | sort-by type
 #         # | group-by type
 #     }
-#         #| select label reference} 
+#         #| select label reference}
 
 #     $docs | each {|d| do $fields $d.title}
 # }
