@@ -1,3 +1,4 @@
+# set the pwd hook in config
 $env.config = ($env.config | upsert hooks {
     env_change: {
         PWD: [
