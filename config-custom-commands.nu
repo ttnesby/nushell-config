@@ -57,9 +57,9 @@ def lsg [] = { ls | sort-by type name -i | grid -c }
 
 # gen - config files to vs code
 alias cfg = code [
-    ([($env.HOME),'.zshrc'] | path join),
-    ($nu.env-path),
     ($nu.config-path),
+    ($nu.env-path),
+    ([($env.HOME),'.zshrc'] | path join),
 ]
 
 # gen - overlay list
