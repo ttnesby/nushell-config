@@ -69,7 +69,7 @@ alias ol = overlay list
 alias on = overlay new
 
 # gen - overlay use
-alias ou = overlay use 
+alias ou = overlay use
 
 # gen - overlay hide
 alias oh = overlay hide
@@ -92,7 +92,7 @@ alias gol = ~/goland
 def-env gd [q: string = ''] { git-repos | fzf -q $q -1 | cd $in }
 
 # cd - to terraform solution within a repo
-def-env td [] { 
+def-env td [] {
     glob **/*.tf --depth 7 --not [**/modules/**]
     | path dirname
     | uniq
@@ -133,25 +133,59 @@ alias o-az = az logout
 
 ### op ################################################################################
 
-# op - development environment variables
-# def env-op [
-#     vault: string = Development
-#     type: string = env_var
-# ] {
-#     let docs = op item list --vault $vault --format json | from json | where category == SECURE_NOTE | select title
-#     let valref = {|i| if $i.type == 'CONCEALED' {$i.reference} else {$i.value}}
-#     let fields = {|t|
-#         op item get $t --vault $vault --format json
-#         | from json
-#         | get fields
-#         | where label == type
-#         |
-#         # | where label not-in ['notesPlain']
-#         # | reduce -f {} {|it, acc| $acc | merge {$it.label: (do $valref $it)} }
-#         # | sort-by type
-#         # | group-by type
-#     }
-#         #| select label reference}
+# op - environment variables
+def-env env-op [
+    --vault (-v): string = Development  # which vault to find env var. documents
+    --tag (-t): string = env_var        # which tag must exist in env. var. documents
+    --hide (-h)                         # hide env. variables
+] {
+    let docs = op item list --vault $vault --format json
+        | from json
+        | where {|d| try { $d | get tags | $tag in $in } catch { false } }
+        | select title
 
-#     $docs | each {|d| do $fields $d.title}
-# }
+    if ($docs | is-empty) {
+        print $"no documents found in ($vault) with tag ($tag)"
+    } else {
+        let relevantFields = ['name' 'value']
+        let valOrRef = {|i| if $i.type == 'CONCEALED' {$i.reference} else {$i.value}}
+
+        let fields = {|t|
+            op item get $t --vault $vault --format json
+            | from json
+            | get fields
+            | where label in $relevantFields
+            | reduce -f {} {|it, acc| $acc | merge {$it.label: (do $valOrRef $it)} }
+        }
+
+        let envVars = $docs | par-each {|d| do $fields $d.title} | sort-by name
+
+        if ($envVars | is-empty) {
+            print $"no documents in ($vault) complies with ($relevantFields)"
+        } else {
+            let selection = $envVars | fzf --multi --ansi --header-lines=2 --cycle | to text | split row (char newline) | filter {|r| $r != ''}
+
+            if ($selection | is-empty) {} else {
+
+                let str2NameValue = {|s|
+                    $s
+                    | split row ' '
+                    | filter {|r| $r != ''}
+                    | collect {|l| {$l.1:$"(op read $l.2)"}}
+                }
+
+                if $hide {
+                    $selection
+                    | par-each {|s| do $str2NameValue $s}
+                    | columns
+                    | hide-env $in.0
+                } else {
+                    $selection
+                    | par-each {|s| do $str2NameValue $s}
+                    | reduce -f {} {|e, acc| $acc | merge $e }
+                    | load-env
+                }
+            }
+        }
+    }
+}
