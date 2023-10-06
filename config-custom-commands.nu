@@ -133,7 +133,7 @@ alias o-az = az logout
 
 ### op ################################################################################
 
-# op - environment variables
+# op - set environment variables in current scope based on 1Password secrets selection
 def-env env-op [
     --vault (-v): string = Development  # which vault to find env var. documents
     --tag (-t): string = env_var        # which tag must exist in env. var. documents
