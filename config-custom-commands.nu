@@ -137,7 +137,6 @@ alias o-az = az logout
 def-env env-op [
     --vault (-v): string = Development  # which vault to find env var. documents
     --tag (-t): string = env_var        # which tag must exist in env. var. documents
-    --hide (-h)                         # hide env. variables
 ] {
     let docs = op item list --vault $vault --format json
         | from json
@@ -174,17 +173,10 @@ def-env env-op [
                     | collect {|l| {$l.1:$"(op read $l.2)"}}
                 }
 
-                if $hide {
-                    $selection
-                    | par-each {|s| do $str2NameValue $s}
-                    | columns
-                    | hide-env $in.0
-                } else {
-                    $selection
-                    | par-each {|s| do $str2NameValue $s}
-                    | reduce -f {} {|e, acc| $acc | merge $e }
-                    | load-env
-                }
+                $selection
+                | par-each {|s| do $str2NameValue $s}
+                | reduce -f {} {|e, acc| $acc | merge $e }
+                | load-env
             }
         }
     }
