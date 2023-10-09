@@ -181,3 +181,48 @@ def-env env-op [
         }
     }
 }
+
+def-env srv-op [
+    --vault (-v): string = Development          # which vault to find env var. documents
+    --tag (-t): string = service_principal      # which tag must exist in service principal documents
+] {
+    let docs = op item list --vault $vault --format json
+        | from json
+        | where {|d| try { $d | get tags | $tag in $in } catch { false } }
+        | select title
+
+    if ($docs | is-empty) {
+        print $"no documents found in ($vault) with tag ($tag)"
+    } else {
+        let relevantFields = ['name' 'tenant_id' 'client_id' 'client_secret']
+        let valOrRef = {|i| if $i.type == 'CONCEALED' {$i.reference} else {$i.value}}
+
+        let fields = {|t|
+            op item get $t --vault $vault --format json
+            | from json
+            | get fields
+            | where label in $relevantFields
+            | reduce -f {} {|it, acc| $acc | merge {$it.label: (do $valOrRef $it)} }
+        }
+
+        let servicePrincipals = $docs | par-each {|d| do $fields $d.title} | sort-by name
+
+        if ($servicePrincipals | is-empty) {
+            print $"no documents in ($vault) complies with ($relevantFields)"
+        } else {
+            let selection = $servicePrincipals | fzf --ansi --header-lines=2 --cycle | to text | split row (char newline) | filter {|r| $r != ''}
+
+            if ($selection | is-empty) {} else {
+
+                let str2NameValue = {|s|
+                    $s
+                    | split row ' '
+                    | filter {|r| $r != ''}
+                    | collect {|l| {tenant_id:$l.2, client_id:$"(op read $l.3)", client_secret:$"(op read $l.4)"}}
+                }
+
+                $selection | par-each {|s| do $str2NameValue $s}
+            }
+        }
+    }
+}
