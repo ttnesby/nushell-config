@@ -129,100 +129,116 @@ def i-az [
 }
 
 # az - logout
-alias o-az = az logout
+def o-az [] {
+
+    let subscriptions = az account list --output json --only-show-errors | from json
+    if ($subscriptions | is-empty) {} else {az logout}
+}
 
 ### op ################################################################################
 
-# op - set environment variables in current scope based on 1Password secrets selection
-def-env env-op [
-    --vault (-v): string = Development  # which vault to find env var. documents
-    --tag (-t): string = env_var        # which tag must exist in env. var. documents
+# op - get documents with tag from vault
+def docs-op [
+    --vault (-v): string    # which vault to find documents
+    --tag (-t): string      # which tag must exist in documents
 ] {
-    let docs = op item list --vault $vault --format json
-        | from json
-        | where {|d| try { $d | get tags | $tag in $in } catch { false } }
-        | select title
+    op item list --vault $vault --format json | from json | where {|d| try { $d | get tags | $tag in $in } catch { false } } | select title
+}
+
+# op - extract relevant fields record from document in vault
+def fields-op [
+    --vault (-v): string                # which vault hosting document
+    --title: string                     # document title
+    --relevantFields (-f): list<string> # fields to extract
+] {
+
+    let valOrRef = {|i| if $i.type == 'CONCEALED' {$i.reference} else {$i.value}}
+
+    op item get $title --vault $vault --format json
+    | from json
+    | get fields
+    | where label in $relevantFields
+    | reduce -f {} {|it, acc| $acc | merge {$it.label: (do $valOrRef $it)} }
+}
+
+# op - select document record(s) from vault
+def docs-record-op [
+    --vault (-v): string                # which vault to find documents
+    --tag (-t): string                  # which tag must exist in documents
+    --relevantFields (-f): list<string> # record content
+    --multiSelection                    # enable fzf multi selection
+] {
+
+    let docs = docs-op --vault $vault --tag $tag
 
     if ($docs | is-empty) {
         print $"no documents found in ($vault) with tag ($tag)"
     } else {
-        let relevantFields = ['name' 'value']
-        let valOrRef = {|i| if $i.type == 'CONCEALED' {$i.reference} else {$i.value}}
-
-        let fields = {|t|
-            op item get $t --vault $vault --format json
-            | from json
-            | get fields
-            | where label in $relevantFields
-            | reduce -f {} {|it, acc| $acc | merge {$it.label: (do $valOrRef $it)} }
-        }
-
-        let envVars = $docs | par-each {|d| do $fields $d.title} | sort-by name
-
-        if ($envVars | is-empty) {
+        let data = $docs | par-each {|d| fields-op --vault $vault --title $d.title --relevantFields $relevantFields} | sort-by $relevantFields.0
+        if ($data | is-empty) {
             print $"no documents in ($vault) complies with ($relevantFields)"
         } else {
-            let selection = $envVars | fzf --multi --ansi --header-lines=2 --cycle | to text | split row (char newline) | filter {|r| $r != ''}
-
-            if ($selection | is-empty) {} else {
-
-                let str2NameValue = {|s|
-                    $s
-                    | split row ' '
-                    | filter {|r| $r != ''}
-                    | collect {|l| {$l.1:$"(op read $l.2)"}}
-                }
-
-                $selection
-                | par-each {|s| do $str2NameValue $s}
-                | reduce -f {} {|e, acc| $acc | merge $e }
-                | load-env
+            #(do $fzfDetails $data) | to text | split row (char newline) | filter {|r| $r != ''}
+            if $multiSelection {
+                $data | fzf --multi --ansi --header-lines=2 --cycle | to text | split row (char newline) | filter {|r| $r != ''}
+            } else {
+                $data | fzf --ansi --header-lines=2 --cycle | to text | split row (char newline) | filter {|r| $r != ''}
             }
         }
     }
 }
 
-def-env srv-op [
-    --vault (-v): string = Development          # which vault to find env var. documents
-    --tag (-t): string = service_principal      # which tag must exist in service principal documents
+# op - set environment variables in current scope based on 1Password secrets selection
+def-env env-op [
+    --vault (-v): string = Development  # which vault to find env var. documents
+    --tag (-t): string = env_var        # which tag must exist in documents
 ] {
-    let docs = op item list --vault $vault --format json
-        | from json
-        | where {|d| try { $d | get tags | $tag in $in } catch { false } }
-        | select title
+    let relevantFields = ['name' 'value']
+    let envVars = docs-record-op --vault $vault --tag $tag --relevantFields $relevantFields --multiSelection
 
-    if ($docs | is-empty) {
-        print $"no documents found in ($vault) with tag ($tag)"
-    } else {
-        let relevantFields = ['name' 'tenant_id' 'client_id' 'client_secret']
-        let valOrRef = {|i| if $i.type == 'CONCEALED' {$i.reference} else {$i.value}}
+    if ($envVars | is-empty) {} else {
 
-        let fields = {|t|
-            op item get $t --vault $vault --format json
-            | from json
-            | get fields
-            | where label in $relevantFields
-            | reduce -f {} {|it, acc| $acc | merge {$it.label: (do $valOrRef $it)} }
+        let str2Record = {|s|
+            $s
+            | split row ' '
+            | filter {|r| $r != ''}
+            | collect {|l| {$l.1:$"(op read $l.2)"}}
         }
 
-        let servicePrincipals = $docs | par-each {|d| do $fields $d.title} | sort-by name
+        $envVars
+        | par-each {|s| do $str2Record $s}
+        | reduce -f {} {|e, acc| $acc | merge $e }
+        | load-env
+    }
+}
 
-        if ($servicePrincipals | is-empty) {
-            print $"no documents in ($vault) complies with ($relevantFields)"
-        } else {
-            let selection = $servicePrincipals | fzf --ansi --header-lines=2 --cycle | to text | split row (char newline) | filter {|r| $r != ''}
+# op - az login with selected service principal
+def srv-op [
+    --vault (-v): string = Development                              # which vault to find env var. documents
+    --tag (-t): string = service_principal                          # which tag must exist in service principal documents
+    --scope (-s): string = 'https://graph.microsoft.com/.default'   # default scope for service principal
+] {
+    let relevantFields = ['name' 'tenant_id' 'client_id' 'client_secret']
+    let servicePrincipal = docs-record-op --vault $vault --tag $tag --relevantFields $relevantFields
 
-            if ($selection | is-empty) {} else {
+    if ($servicePrincipal | is-empty) {} else {
 
-                let str2NameValue = {|s|
-                    $s
-                    | split row ' '
-                    | filter {|r| $r != ''}
-                    | collect {|l| {tenant_id:$l.2, client_id:$"(op read $l.3)", client_secret:$"(op read $l.4)"}}
-                }
-
-                $selection | par-each {|s| do $str2NameValue $s}
-            }
+        let str2Record = {|s|
+            $s
+            | split row ' '
+            | filter {|r| $r != ''}
+            | collect {|l| {
+                tenant_id:$l.2,
+                client_id:$"(op read $l.3)",
+                client_secret:$"(op read $l.4)"
+                scope: $scope
+            }}
         }
+
+        o-az
+        $servicePrincipal
+        | do $str2Record $in
+        | do {|r| az login --service-principal --scope $r.scope --tenant $r.tenant_id --username $r.client_id --password $r.client_secret --only-show-errors --output json } $in
+        | from json | print $"Available subscriptions: ($in | length)"
     }
 }
