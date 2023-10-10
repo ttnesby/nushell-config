@@ -37,6 +37,56 @@ def subscription-fzf [] {
     $in | from json | where state == 'Enabled' | select name id | sort-by name | fzf-concat name id
 }
 
+# util - get documents with tag from vault
+def docs-op [
+    --vault (-v): string    # which vault to find documents
+    --tag (-t): string      # which tag must exist in documents
+] {
+    op item list --vault $vault --format json | from json | where {|d| try { $d | get tags | $tag in $in } catch { false } } | select title
+}
+
+# util - extract relevant fields record from document in vault
+def fields-op [
+    --vault (-v): string                # which vault hosting document
+    --title: string                     # document title
+    --relevantFields (-f): list<string> # fields to extract
+] {
+
+    let valOrRef = {|i| if $i.type == 'CONCEALED' {$i.reference} else {$i.value}}
+
+    op item get $title --vault $vault --format json
+    | from json
+    | get fields
+    | where label in $relevantFields
+    | reduce -f {} {|it, acc| $acc | merge {$it.label: (do $valOrRef $it)} }
+}
+
+# util - select document record(s) from vault
+def docs-record-op [
+    --vault (-v): string                # which vault to find documents
+    --tag (-t): string                  # which tag must exist in documents
+    --relevantFields (-f): list<string> # record content
+    --multiSelection                    # enable fzf multi selection
+] {
+
+    let docs = docs-op --vault $vault --tag $tag
+
+    if ($docs | is-empty) {
+        print $"no documents found in ($vault) with tag ($tag)"
+    } else {
+        let data = $docs | par-each {|d| fields-op --vault $vault --title $d.title --relevantFields $relevantFields} | sort-by $relevantFields.0
+        if ($data | is-empty) {
+            print $"no documents in ($vault) complies with ($relevantFields)"
+        } else {
+            #(do $fzfDetails $data) | to text | split row (char newline) | filter {|r| $r != ''}
+            if $multiSelection {
+                $data | fzf --multi --ansi --header-lines=2 --cycle | to text | split row (char newline) | filter {|r| $r != ''}
+            } else {
+                $data | fzf --ansi --header-lines=2 --cycle | to text | split row (char newline) | filter {|r| $r != ''}
+            }
+        }
+    }
+}
 
 ### gen ################################################################################
 
@@ -101,92 +151,7 @@ def-env td [] {
     | cd $in
 }
 
-
-### az ################################################################################
-
-# az - account set, choosing subscription with fzf
-def as-az [] {
-    let getAccounts = { az account list --only-show-errors --output json | subscription-fzf }
-    let accounts = do $getAccounts
-    let sel = if ($accounts | is-empty) { (i-az --subList) | fzf-str column2 } else { $accounts | fzf-str column2}
-
-    if $sel != '' {
-        az account set --subscription ($sel)
-    }
-}
-
-# az - login
-def i-az [
-    scope: string = 'https://graph.microsoft.com/.default'
-    --subList
-    ] {
-        let login = {az login --scope ($scope) --only-show-errors --output json}
-        if $subList {
-            do $login | subscription-fzf
-        } else {
-            do $login | from json | print $"Available subscriptions: ($in | length)"
-        }
-}
-
-# az - logout
-def o-az [] {
-
-    let subscriptions = az account list --output json --only-show-errors | from json
-    if ($subscriptions | is-empty) {} else {az logout}
-}
-
 ### op ################################################################################
-
-# op - get documents with tag from vault
-def docs-op [
-    --vault (-v): string    # which vault to find documents
-    --tag (-t): string      # which tag must exist in documents
-] {
-    op item list --vault $vault --format json | from json | where {|d| try { $d | get tags | $tag in $in } catch { false } } | select title
-}
-
-# op - extract relevant fields record from document in vault
-def fields-op [
-    --vault (-v): string                # which vault hosting document
-    --title: string                     # document title
-    --relevantFields (-f): list<string> # fields to extract
-] {
-
-    let valOrRef = {|i| if $i.type == 'CONCEALED' {$i.reference} else {$i.value}}
-
-    op item get $title --vault $vault --format json
-    | from json
-    | get fields
-    | where label in $relevantFields
-    | reduce -f {} {|it, acc| $acc | merge {$it.label: (do $valOrRef $it)} }
-}
-
-# op - select document record(s) from vault
-def docs-record-op [
-    --vault (-v): string                # which vault to find documents
-    --tag (-t): string                  # which tag must exist in documents
-    --relevantFields (-f): list<string> # record content
-    --multiSelection                    # enable fzf multi selection
-] {
-
-    let docs = docs-op --vault $vault --tag $tag
-
-    if ($docs | is-empty) {
-        print $"no documents found in ($vault) with tag ($tag)"
-    } else {
-        let data = $docs | par-each {|d| fields-op --vault $vault --title $d.title --relevantFields $relevantFields} | sort-by $relevantFields.0
-        if ($data | is-empty) {
-            print $"no documents in ($vault) complies with ($relevantFields)"
-        } else {
-            #(do $fzfDetails $data) | to text | split row (char newline) | filter {|r| $r != ''}
-            if $multiSelection {
-                $data | fzf --multi --ansi --header-lines=2 --cycle | to text | split row (char newline) | filter {|r| $r != ''}
-            } else {
-                $data | fzf --ansi --header-lines=2 --cycle | to text | split row (char newline) | filter {|r| $r != ''}
-            }
-        }
-    }
-}
 
 # op - set environment variables in current scope based on 1Password secrets selection
 def-env env-op [
@@ -212,8 +177,41 @@ def-env env-op [
     }
 }
 
-# op - az login with selected service principal
-def srv-op [
+### az ################################################################################
+
+# az - az account set, fzf selected subscription
+def as-az [] {
+    let getAccounts = { az account list --only-show-errors --output json | subscription-fzf }
+    let accounts = do $getAccounts
+    let sel = if ($accounts | is-empty) { (i-az --subList) | fzf-str column2 } else { $accounts | fzf-str column2}
+
+    if $sel != '' {
+        az account set --subscription ($sel)
+    }
+}
+
+# az - az logout
+def o-az [] {
+
+    let subscriptions = az account list --output json --only-show-errors | from json
+    if ($subscriptions | is-empty) {} else {az logout}
+}
+
+# az - az login via web browser
+def i-az [
+    scope: string = 'https://graph.microsoft.com/.default'
+    --subList
+    ] {
+        let login = {az login --scope ($scope) --only-show-errors --output json}
+        if $subList {
+            do $login | subscription-fzf
+        } else {
+            do $login | from json | print $"Available subscriptions: ($in | length)"
+        }
+}
+
+# az - az login with fzf selected service principal
+def i-srv-az [
     --vault (-v): string = Development                              # which vault to find env var. documents
     --tag (-t): string = service_principal                          # which tag must exist in service principal documents
     --scope (-s): string = 'https://graph.microsoft.com/.default'   # default scope for service principal
