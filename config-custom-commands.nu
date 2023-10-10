@@ -78,7 +78,6 @@ def docs-record-op [
         if ($data | is-empty) {
             print $"no documents in ($vault) complies with ($relevantFields)"
         } else {
-            #(do $fzfDetails $data) | to text | split row (char newline) | filter {|r| $r != ''}
             if $multiSelection {
                 $data | fzf --multi --ansi --header-lines=2 --cycle | to text | split row (char newline) | filter {|r| $r != ''}
             } else {
