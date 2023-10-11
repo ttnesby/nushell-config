@@ -71,22 +71,17 @@ def docs-record-op [
     --relevantFields (-f): list<string> # record content
     --multiSelection                    # enable fzf multi selection
 ] {
-    let docs = docs-op --vault $vault --tag $tag
+    let data = docs-op --vault $vault --tag $tag 
+    | par-each {|d| fields-op --vault $vault --title $d.title --relevantFields $relevantFields} 
+    | try { sort-by $relevantFields.0 }
 
-    if ($docs | is-empty) {
-        print $"no documents found in ($vault) with tag ($tag)"
-    } else {
-        let data = $docs | par-each {|d| fields-op --vault $vault --title $d.title --relevantFields $relevantFields} | try { sort-by $relevantFields.0 }
-        if ($data | is-empty) {
-            print $"no documents in ($vault) complies with ($relevantFields)"
+    if ($data | is-empty) {} else {
+        let postProcess = {|d| $d | to text | split row (char newline) | filter {|r| $r != ''} }
+
+        if $multiSelection {
+            $data | fzf --multi --ansi --header-lines=2 --cycle | do $postProcess $in
         } else {
-            let postProcess = {|d| $d | to text | split row (char newline) | filter {|r| $r != ''} }
-
-            if $multiSelection {
-                $data | fzf --multi --ansi --header-lines=2 --cycle | do $postProcess $in
-            } else {
-                $data | fzf --ansi --header-lines=2 --cycle | do $postProcess $in
-            }
+            $data | fzf --ansi --header-lines=2 --cycle | do $postProcess $in
         }
     }
 }
@@ -163,21 +158,9 @@ def-env env-op [
 ] {
     let relevantFields = ['name' 'value']
     let envVars = docs-record-op --vault $vault --tag $tag --relevantFields $relevantFields --multiSelection
+    let str2Record = {|s| $s | split row ' ' | filter {|r| $r != ''} | collect {|l| {$l.1:$"(op read $l.2)"}} }
 
-    if ($envVars | is-empty) {} else {
-
-        let str2Record = {|s|
-            $s
-            | split row ' '
-            | filter {|r| $r != ''}
-            | collect {|l| {$l.1:$"(op read $l.2)"}}
-        }
-
-        $envVars
-        | par-each {|s| do $str2Record $s}
-        | reduce -f {} {|e, acc| $acc | merge $e }
-        | load-env
-    }
+    $envVars | par-each {|s| do $str2Record $s} | reduce -f {} {|e, acc| $acc | merge $e } | load-env
 }
 
 ### az ################################################################################
@@ -222,20 +205,19 @@ def i-srv-az [
     let relevantFields = ['name' 'tenant_id' 'client_id' 'client_secret']
     let servicePrincipal = docs-record-op --vault $vault --tag $tag --relevantFields $relevantFields
 
+    let str2Record = {|s|
+        $s
+        | split row ' '
+        | filter {|r| $r != ''}
+        | collect {|l| {
+            tenant_id:$l.2,
+            client_id:$"(op read $l.3)",
+            client_secret:$"(op read $l.4)"
+            scope: $scope
+        }}
+    }
+
     if ($servicePrincipal | is-empty) {} else {
-
-        let str2Record = {|s|
-            $s
-            | split row ' '
-            | filter {|r| $r != ''}
-            | collect {|l| {
-                tenant_id:$l.2,
-                client_id:$"(op read $l.3)",
-                client_secret:$"(op read $l.4)"
-                scope: $scope
-            }}
-        }
-
         o-az
         $servicePrincipal
         | do $str2Record $in
