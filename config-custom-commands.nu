@@ -42,7 +42,10 @@ def docs-op [
     --vault (-v): string    # which vault to find documents
     --tag (-t): string      # which tag must exist in documents
 ] {
-    op item list --vault $vault --format json | from json | where {|d| try { $d | get tags | $tag in $in } catch { false } } | select title
+    op item list --vault $vault --format json 
+    | from json 
+    | where {|d| try { $d | get tags | $tag in $in } catch { false } } 
+    | select title
 }
 
 # util - extract relevant fields record from document in vault
@@ -51,14 +54,14 @@ def fields-op [
     --title: string                     # document title
     --relevantFields (-f): list<string> # fields to extract
 ] {
-
     let valOrRef = {|i| if $i.type == 'CONCEALED' {$i.reference} else {$i.value}}
 
     op item get $title --vault $vault --format json
-    | from json
-    | get fields
+    | from json 
+    | get fields 
     | where label in $relevantFields
     | reduce -f {} {|it, acc| $acc | merge {$it.label: (do $valOrRef $it)} }
+    | do {|r| if ($r | columns ) == $relevantFields {$r} } $in
 }
 
 # util - select document record(s) from vault
@@ -68,13 +71,12 @@ def docs-record-op [
     --relevantFields (-f): list<string> # record content
     --multiSelection                    # enable fzf multi selection
 ] {
-
     let docs = docs-op --vault $vault --tag $tag
 
     if ($docs | is-empty) {
         print $"no documents found in ($vault) with tag ($tag)"
     } else {
-        let data = $docs | par-each {|d| fields-op --vault $vault --title $d.title --relevantFields $relevantFields} | sort-by $relevantFields.0
+        let data = $docs | par-each {|d| fields-op --vault $vault --title $d.title --relevantFields $relevantFields} | try { sort-by $relevantFields.0 }
         if ($data | is-empty) {
             print $"no documents in ($vault) complies with ($relevantFields)"
         } else {
@@ -104,7 +106,7 @@ def cco [] {
 alias cls = clear
 
 # gen - dir content as grid, used in pwd hook
-def lsg [] = { ls | sort-by type name -i | grid -c }
+def lsg [] = { ls -as | sort-by type name -i | grid -c }
 
 # gen - config files to vs code
 alias cfg = code [
