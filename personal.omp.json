@@ -35,17 +35,17 @@
           "type": "git"
         },
         {
-          "background": "#2e9599",
-          "background_templates": ["{{ if gt .Code 0 }}#f1184c{{ end }}"],
+          "type": "executiontime",
+          "style": "powerline",
+          "powerline_symbol": "",
           "foreground": "#ffffff",
-          "leading_diamond": "<transparent,background>\ue0b0</>",
+          "background": "#8800dd",
+          "template": " <#fefefe></> {{ .FormattedMs }} ",
           "properties": {
+            "threshold": 50,
+            "style": "roundrock",
             "always_enabled": true
-          },
-          "style": "diamond",
-          "template": " \ue23a {{ if gt .Code 0 }}\uf00d {{ reason .Code }}{{ else }}\uf42e{{ end }} ",
-          "trailing_diamond": "\ue0b4",
-          "type": "status"
+          }
         }
       ],
       "type": "prompt"
@@ -68,7 +68,7 @@
           "foreground": "#000000",
           "powerline_symbol": "\ue0b0",
           "style": "powerline",
-          "template": " \uebd8 Subscription {{ .Name }} ({{ if .EnvironmentName | contains \"AzureCloud\" }}{{ \"Global\" }}{{ else }}{{ .EnvironmentName }} User {{ .User.Name }} {{ end }}) ",
+          "template": " \uebd8 Subscription {{ .Name }} - {{ .User.Type }}: {{ .User.Name }}",
           "type": "az"
         }
       ],
