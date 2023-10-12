@@ -185,10 +185,12 @@ def o-az [] {
 
 # az - az login via web browser
 def i-az [
-    scope: string = 'https://graph.microsoft.com/.default'
+    --scope (-s): string = 'https://graph.microsoft.com/.default'
     --subList
     ] {
         let login = {az login --scope ($scope) --only-show-errors --output json}
+
+        o-az
         if $subList {
             do $login | subscription-fzf
         } else {
