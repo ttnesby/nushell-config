@@ -227,3 +227,24 @@ def i-srv-az [
         | from json | print $"Available subscriptions: ($in | length)"
     }
 }
+
+# az - get all networks for authenticated user
+def vnet-az [] {
+    az account management-group entities list 
+    | from json 
+    | where type == /subscriptions 
+    | select displayName id name
+    | par-each {|s| 
+        az network vnet list --subscription $s.name
+        | from json 
+        | select name addressSpace
+        | do {|v| 
+            {
+                subscription: $s.displayName
+                vnetName:$v.name 
+                addressPrefixes: $v.addressSpace.addressPrefixes 
+            }
+        } $in
+    }
+    | where vnetName != []
+}
