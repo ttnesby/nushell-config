@@ -228,7 +228,7 @@ def i-srv-az [
     }
 }
 
-# az - get all networks for authenticated user
+# az - get all networks, scoped by authenticated user
 def vnet-az [] {
     az account management-group entities list 
     | from json 
@@ -247,4 +247,9 @@ def vnet-az [] {
         } $in
     }
     | where vnetName != []
+}
+
+# az - list all address prefix, scoped by authenticated user
+def ap-az [] {
+    vnet-az | get addressPrefixes | flatten | flatten
 }
