@@ -149,6 +149,49 @@ def-env td [] {
     | cd $in
 }
 
+### git ###############################################################################
+
+# git - gently try to delete merged branches, excluding the checked out one
+def gbd [] {
+    git branch --merged 
+    | lines 
+    | where $it !~ '\*' 
+    | str trim 
+    | where $it != 'master' and $it != 'main' 
+    | each { |it| git branch -d $it }}
+
+### ip ################################################################################
+
+# ip - extract details from cidr
+def ip [
+    --cidr: string
+] {
+    use std repeat
+    # https://www.ipconvertertools.com/convert-cidr-manually-binary
+
+    let rec = $cidr | parse '{a}.{b}.{c}.{d}/{subnet}' | first
+    let subnetSize = $rec.subnet | into int
+    let bits = $rec | values | drop | each {|s| $s | into int | into bits | str substring 0..8} | str join
+
+    let networkBits = '1' | repeat $subnetSize | str join
+    let noHostBits = '0' | repeat (32 - $subnetSize) | str join
+    let bCastHostsBits = '1' | repeat (32 - $subnetSize) | str join
+    let oneHostsBits = ('0' | repeat (32 - $subnetSize - 1) | str join) + '1'
+    let allHostsBits = ('1' | repeat (32 - $subnetSize - 1) | str join) + '0'
+
+    let byteRanges = [0..8, 8..16, 16..24, 24..32]
+    let bitsToStr = {|bits| $byteRanges | each {|r| $bits | str substring $r | into int -r 2 | into string } }
+
+    let subnetMask = $networkBits + $noHostBits | do $bitsToStr $in | str join '.'
+    let networkAddress = ($bits | str substring 0..$subnetSize) + $noHostBits |  do $bitsToStr $in | str join '.'
+    let broadcastAddress = ($bits | str substring 0..$subnetSize) + $bCastHostsBits |  do $bitsToStr $in | str join '.'
+    let startIP = ($bits | str substring 0..$subnetSize) + $oneHostsBits |  do $bitsToStr $in | str join '.'
+    ($bits | str substring 0..$subnetSize) + $allHostsBits |  do $bitsToStr $in | str join '.'
+
+    # 
+}
+
+
 ### op ################################################################################
 
 # op - set environment variables in current scope based on 1Password secrets selection
@@ -251,5 +294,9 @@ def vnet-az [] {
 
 # az - list all address prefix, scoped by authenticated user
 def ap-az [] {
-    vnet-az | get addressPrefixes | flatten | flatten
+    vnet-az 
+    | get addressPrefixes 
+    | flatten 
+    | flatten
+    | par-each {|ap| $ap | parse '{a}.{b}.{c}.{d}/{subnet}' | first }
 }
