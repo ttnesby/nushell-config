@@ -182,11 +182,19 @@ def ip [
     let byteRanges = [0..8, 8..16, 16..24, 24..32]
     let bitsToStr = {|bits| $byteRanges | each {|r| $bits | str substring $r | into int -r 2 | into string } }
 
-    let subnetMask = $networkBits + $noHostBits | do $bitsToStr $in | str join '.'
-    let networkAddress = ($bits | str substring 0..$subnetSize) + $noHostBits |  do $bitsToStr $in | str join '.'
-    let broadcastAddress = ($bits | str substring 0..$subnetSize) + $bCastHostsBits |  do $bitsToStr $in | str join '.'
-    let startIP = ($bits | str substring 0..$subnetSize) + $oneHostsBits |  do $bitsToStr $in | str join '.'
-    ($bits | str substring 0..$subnetSize) + $allHostsBits |  do $bitsToStr $in | str join '.'
+    # let subnetMask = $networkBits + $noHostBits | do $bitsToStr $in | str join '.'
+    # let networkAddress = ($bits | str substring 0..$subnetSize) + $noHostBits |  do $bitsToStr $in | str join '.'
+    # let broadcastAddress = ($bits | str substring 0..$subnetSize) + $bCastHostsBits |  do $bitsToStr $in | str join '.'
+    # let startIP = ($bits | str substring 0..$subnetSize) + $oneHostsBits |  do $bitsToStr $in | str join '.'
+    # ($bits | str substring 0..$subnetSize) + $allHostsBits |  do $bitsToStr $in | str join '.'
+
+    {
+        subnetMask: ($networkBits + $noHostBits | do $bitsToStr $in | str join '.')
+        networkAddress: (($bits | str substring 0..$subnetSize) + $noHostBits |  do $bitsToStr $in | str join '.')
+        broadcastAddress: (($bits | str substring 0..$subnetSize) + $bCastHostsBits |  do $bitsToStr $in | str join '.')
+        startIP: (($bits | str substring 0..$subnetSize) + $oneHostsBits |  do $bitsToStr $in | str join '.')
+        lastIP: (($bits | str substring 0..$subnetSize) + $allHostsBits |  do $bitsToStr $in | str join '.')
+    }
 
     # 
 }
