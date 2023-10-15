@@ -42,9 +42,9 @@ def docs-op [
     --vault (-v): string    # which vault to find documents
     --tag (-t): string      # which tag must exist in documents
 ] {
-    op item list --vault $vault --format json 
-    | from json 
-    | where {|d| try { $d | get tags | $tag in $in } catch { false } } 
+    op item list --vault $vault --format json
+    | from json
+    | where {|d| try { $d | get tags | $tag in $in } catch { false } }
     | select title
 }
 
@@ -57,8 +57,8 @@ def fields-op [
     let valOrRef = {|i| if $i.type == 'CONCEALED' {$i.reference} else {$i.value}}
 
     op item get $title --vault $vault --format json
-    | from json 
-    | get fields 
+    | from json
+    | get fields
     | where label in $relevantFields
     | reduce -f {} {|it, acc| $acc | merge {$it.label: (do $valOrRef $it)} }
     | do {|r| if ($r | columns ) == $relevantFields {$r} } $in
@@ -71,8 +71,8 @@ def docs-record-op [
     --relevantFields (-f): list<string> # record content
     --multiSelection                    # enable fzf multi selection
 ] {
-    let data = docs-op --vault $vault --tag $tag 
-    | par-each {|d| fields-op --vault $vault --title $d.title --relevantFields $relevantFields} 
+    let data = docs-op --vault $vault --tag $tag
+    | par-each {|d| fields-op --vault $vault --title $d.title --relevantFields $relevantFields}
     | try { sort-by $relevantFields.0 }
 
     if ($data | is-empty) {} else {
@@ -153,50 +153,59 @@ def-env td [] {
 
 # git - gently try to delete merged branches, excluding the checked out one
 def gbd [] {
-    git branch --merged 
-    | lines 
-    | where $it !~ '\*' 
-    | str trim 
-    | where $it != 'master' and $it != 'main' 
+    git branch --merged
+    | lines
+    | where $it !~ '\*'
+    | str trim
+    | where $it != 'master' and $it != 'main'
     | each { |it| git branch -d $it }}
 
-### ip ################################################################################
+### ipv4 ################################################################################
 
-# ip - extract details from cidr
-def ip [
-    --cidr: string
-] {
+# ipv4 - extract details from cidr
+def cidr [] {
+    let input = $in
+
     use std repeat
     # https://www.ipconvertertools.com/convert-cidr-manually-binary
 
-    let rec = $cidr | parse '{a}.{b}.{c}.{d}/{subnet}' | first
-    let subnetSize = $rec.subnet | into int
-    let bits = $rec | values | drop | each {|s| $s | into int | into bits | str substring 0..8} | str join
-
-    let networkBits = '1' | repeat $subnetSize | str join
-    let noHostBits = '0' | repeat (32 - $subnetSize) | str join
-    let bCastHostsBits = '1' | repeat (32 - $subnetSize) | str join
-    let oneHostsBits = ('0' | repeat (32 - $subnetSize - 1) | str join) + '1'
-    let allHostsBits = ('1' | repeat (32 - $subnetSize - 1) | str join) + '0'
-
-    let byteRanges = [0..8, 8..16, 16..24, 24..32]
-    let bitsToStr = {|bits| $byteRanges | each {|r| $bits | str substring $r | into int -r 2 | into string } }
-
-    # let subnetMask = $networkBits + $noHostBits | do $bitsToStr $in | str join '.'
-    # let networkAddress = ($bits | str substring 0..$subnetSize) + $noHostBits |  do $bitsToStr $in | str join '.'
-    # let broadcastAddress = ($bits | str substring 0..$subnetSize) + $bCastHostsBits |  do $bitsToStr $in | str join '.'
-    # let startIP = ($bits | str substring 0..$subnetSize) + $oneHostsBits |  do $bitsToStr $in | str join '.'
-    # ($bits | str substring 0..$subnetSize) + $allHostsBits |  do $bitsToStr $in | str join '.'
-
-    {
-        subnetMask: ($networkBits + $noHostBits | do $bitsToStr $in | str join '.')
-        networkAddress: (($bits | str substring 0..$subnetSize) + $noHostBits |  do $bitsToStr $in | str join '.')
-        broadcastAddress: (($bits | str substring 0..$subnetSize) + $bCastHostsBits |  do $bitsToStr $in | str join '.')
-        startIP: (($bits | str substring 0..$subnetSize) + $oneHostsBits |  do $bitsToStr $in | str join '.')
-        lastIP: (($bits | str substring 0..$subnetSize) + $allHostsBits |  do $bitsToStr $in | str join '.')
+    let bits32ToIPv4Str = {|bits|
+        [0..8, 8..16, 16..24, 24..32]
+        | each {|r| $bits | str substring $r | into int -r 2 | into string }
+        | str join '.'
     }
 
-    # 
+    let bits32ToInt = {|bits| $bits | into int -r 2 }
+
+    $input | each {|it|
+        let asRec = $it | parse '{a}.{b}.{c}.{d}/{subnet}' | first
+        let subnetSize = $asRec.subnet | into int
+        let ipAsSubnetSizeBits = $asRec
+            | values
+            | drop
+            | each {|s| $s | into int | into bits | str substring 0..8}
+            | str join
+            | str substring 0..$subnetSize
+
+        let networkBits = '1' | repeat $subnetSize | str join
+        let noHostBits = '0' | repeat (32 - $subnetSize) | str join
+        let bCastHostsBits = '1' | repeat (32 - $subnetSize) | str join
+        let firstHostBits = ('0' | repeat (32 - $subnetSize - 1) | str join) + '1'
+        let lastHostBits = ('1' | repeat (32 - $subnetSize - 1) | str join) + '0'
+
+        {
+            cidr: ($it)
+            subnetMask: ($networkBits + $noHostBits | do $bits32ToIPv4Str $in)
+            networkAddress: ($ipAsSubnetSizeBits  + $noHostBits |  do $bits32ToIPv4Str $in)
+            broadcastAddress: ($ipAsSubnetSizeBits + $bCastHostsBits |  do $bits32ToIPv4Str $in)
+            firstIP: ($ipAsSubnetSizeBits + $firstHostBits |  do $bits32ToIPv4Str $in)
+            lastIP: ($ipAsSubnetSizeBits + $lastHostBits |  do $bits32ToIPv4Str $in)
+            noOfHost: (2 ** (32 - $subnetSize) - 2)
+            networkIntRange: {
+                ($ipAsSubnetSizeBits  + $noHostBits |  do $bits32ToInt $in)..($ipAsSubnetSizeBits + $bCastHostsBits |  do $bits32ToInt $in)
+            }            
+        }
+    }
 }
 
 
@@ -281,19 +290,19 @@ def i-srv-az [
 
 # az - get all networks, scoped by authenticated user
 def vnet-az [] {
-    az account management-group entities list 
-    | from json 
-    | where type == /subscriptions 
+    az account management-group entities list
+    | from json
+    | where type == /subscriptions
     | select displayName id name
-    | par-each {|s| 
+    | par-each {|s|
         az network vnet list --subscription $s.name
-        | from json 
+        | from json
         | select name addressSpace
-        | do {|v| 
+        | do {|v|
             {
                 subscription: $s.displayName
-                vnetName:$v.name 
-                addressPrefixes: $v.addressSpace.addressPrefixes 
+                vnetName:$v.name
+                addressPrefixes: $v.addressSpace.addressPrefixes
             }
         } $in
     }
@@ -302,9 +311,9 @@ def vnet-az [] {
 
 # az - list all address prefix, scoped by authenticated user
 def ap-az [] {
-    vnet-az 
-    | get addressPrefixes 
-    | flatten 
+    vnet-az
+    | get addressPrefixes
+    | flatten
     | flatten
     | par-each {|ap| $ap | parse '{a}.{b}.{c}.{d}/{subnet}' | first }
 }
