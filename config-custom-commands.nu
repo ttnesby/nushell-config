@@ -345,6 +345,7 @@ def cidr-az [] {
 
         $c | merge {range: $inRange}
     }
+    | sort-by start
     | group-by range
     | sort
 }
