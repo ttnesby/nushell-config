@@ -296,7 +296,9 @@ def i-srv-az [
         o-az
         $servicePrincipal
         | do $str2Record $in
-        | do {|r| az login --service-principal --scope $r.scope --tenant $r.tenant_id --username $r.client_id --password $r.client_secret --only-show-errors --output json } $in
+        | do {|r| 
+            az login --service-principal --scope $r.scope --tenant $r.tenant_id --username $r.client_id --password $r.client_secret --only-show-errors --output json 
+        } $in
         | from json | print $"Available subscriptions: ($in | length)"
     }
 }
