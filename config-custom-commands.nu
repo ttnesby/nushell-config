@@ -204,8 +204,8 @@ def cidr [] {
             firstIP: ($ipAsSubnetSizeBits + $firstHostBits |  do $bits32ToIPv4Str $in)
             lastIP: ($ipAsSubnetSizeBits + $lastHostBits |  do $bits32ToIPv4Str $in)
             noOfHosts: (2 ** (32 - $subnetSize) - 2)
-            startRangeInt: ($ipAsSubnetSizeBits  + $noHostsBits |  do $bits32ToInt $in)
-            endRangeInt: ($ipAsSubnetSizeBits + $bCastHostsBits |  do $bits32ToInt $in)
+            start: ($ipAsSubnetSizeBits  + $noHostsBits |  do $bits32ToInt $in)
+            end: ($ipAsSubnetSizeBits + $bCastHostsBits |  do $bits32ToInt $in)
         }
     }
 }
@@ -227,12 +227,13 @@ def-env env-op [
 
 # op - get azure navno ip ranges
 def rng-op [] {
-    op item get IP-Ranges --vault Development --format json 
-    | from json 
-    | get fields 
-    | where label != notesPlain 
+    op item get IP-Ranges --vault Development --format json
+    | from json
+    | get fields
+    | where label != notesPlain
     | select label value
-    | reduce -f {} {|it, acc| $acc | merge {$it.label: ($it.value | cidr)} }
+    | par-each {|r| {name: $r.label } | merge ($r.value | cidr) }
+    | sort-by name
 }
 
 ### az ################################################################################
@@ -300,32 +301,48 @@ def i-srv-az [
     }
 }
 
-# az - get all networks, scoped by authenticated user
+# az - get all cidr's, scoped by authenticated user
 def vnet-az [] {
+    # list of subscriptions
     az account management-group entities list
     | from json
     | where type == /subscriptions
     | select displayName id name
     | par-each {|s|
+        # list of networks in a subscription
         az network vnet list --subscription $s.name
         | from json
+        # list of cidr's for a network
         | select name addressSpace
-        | do {|v|
+        | each {|v|
             {
                 subscription: $s.displayName
                 vnetName:$v.name
-                addressPrefixes: $v.addressSpace.addressPrefixes
+                cidr: $v.addressSpace.addressPrefixes
             }
-        } $in
+        }
     }
     | where vnetName != []
+    | flatten # networks
+    | flatten # cidrs' in a network
+    | sort-by subscription
 }
 
-# az - list all address prefix, scoped by authenticated user
-def ap-az [] {
+# az - group all cidr's details by known network ranges, scoped by authenticated user
+def cidr-az [] {
+    let ranges = rng-op
+    const unknown = 'unknown'
+
     vnet-az
-    | get addressPrefixes
-    | flatten
-    | flatten
-    | cidr
+    | par-each {|c| {subscription: $c.subscription, vnetName: $c.vnetName} | merge ($c.cidr | cidr) }
+    | par-each {|c|         
+        let inRange = $ranges 
+            | each {|r| if $c.start >= $r.start and $c.end <= $r.end {$r.name} else {$unknown} }
+            | filter {|s| $s != $unknown}
+            | collect {|l| if ($l | is-empty) {$unknown} else {$l | first} }
+
+        $c | merge {range: $inRange}
+    }
+    | group-by range
+    | sort
 }
