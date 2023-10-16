@@ -180,7 +180,7 @@ def cidr [] {
 
     let bits32ToInt = {|bits| $bits | into int -r 2 }
 
-    $input | each {|it|
+    $input | par-each {|it|
         let asRec = $it | parse '{a}.{b}.{c}.{d}/{subnet}' | first
         let subnetSize = $asRec.subnet | into int
         let ipAsSubnetSizeBits = $asRec
@@ -223,6 +223,16 @@ def-env env-op [
     let str2Record = {|s| $s | split row ' ' | filter {|r| $r != ''} | collect {|l| {$l.1:$"(op read $l.2)"}} }
 
     $envVars | par-each {|s| do $str2Record $s} | reduce -f {} {|e, acc| $acc | merge $e } | load-env
+}
+
+# op - get azure navno ip ranges
+def rng-op [] {
+    op item get IP-Ranges --vault Development --format json 
+    | from json 
+    | get fields 
+    | where label != notesPlain 
+    | select label value
+    | reduce -f {} {|it, acc| $acc | merge {$it.label: ($it.value | cidr)} }
 }
 
 ### az ################################################################################
