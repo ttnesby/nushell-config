@@ -336,8 +336,9 @@ def cidr-az [] {
             | each {|r| if $c.start >= $r.start and $c.end <= $r.end {$r.name} else {$unknown} }
             | filter {|s| $s != $unknown}
             | collect {|l| 
-                if ($l | is-empty) {$unknown} 
-                else {
+                if ($l | is-empty) {
+                    $unknown
+                } else {
                     if ($l | length) > 1 {'error'} else {$l | first}
                 } 
             }
