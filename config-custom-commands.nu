@@ -163,6 +163,9 @@ def gbd [] {
 ### ipv4 ################################################################################
 
 # ipv4 - extract details from cidr
+#
+# single cidr:   '110.40.240.16/22' | cidr
+# multiple cidr: [110.40.240.16/22 14.12.72.8/17 10.98.1.64/28] | cidr
 def cidr [] {
     let input = $in
 
@@ -188,22 +191,21 @@ def cidr [] {
             | str substring 0..$subnetSize
 
         let networkBits = '1' | repeat $subnetSize | str join
-        let noHostBits = '0' | repeat (32 - $subnetSize) | str join
+        let noHostsBits = '0' | repeat (32 - $subnetSize) | str join
         let bCastHostsBits = '1' | repeat (32 - $subnetSize) | str join
         let firstHostBits = ('0' | repeat (32 - $subnetSize - 1) | str join) + '1'
         let lastHostBits = ('1' | repeat (32 - $subnetSize - 1) | str join) + '0'
 
         {
             cidr: ($it)
-            subnetMask: ($networkBits + $noHostBits | do $bits32ToIPv4Str $in)
-            networkAddress: ($ipAsSubnetSizeBits  + $noHostBits |  do $bits32ToIPv4Str $in)
+            subnetMask: ($networkBits + $noHostsBits | do $bits32ToIPv4Str $in)
+            networkAddress: ($ipAsSubnetSizeBits  + $noHostsBits |  do $bits32ToIPv4Str $in)
             broadcastAddress: ($ipAsSubnetSizeBits + $bCastHostsBits |  do $bits32ToIPv4Str $in)
             firstIP: ($ipAsSubnetSizeBits + $firstHostBits |  do $bits32ToIPv4Str $in)
             lastIP: ($ipAsSubnetSizeBits + $lastHostBits |  do $bits32ToIPv4Str $in)
-            noOfHost: (2 ** (32 - $subnetSize) - 2)
-            networkIntRange: {
-                ($ipAsSubnetSizeBits  + $noHostBits |  do $bits32ToInt $in)..($ipAsSubnetSizeBits + $bCastHostsBits |  do $bits32ToInt $in)
-            }            
+            noOfHosts: (2 ** (32 - $subnetSize) - 2)
+            startRangeInt: ($ipAsSubnetSizeBits  + $noHostsBits |  do $bits32ToInt $in)
+            endRangeInt: ($ipAsSubnetSizeBits + $bCastHostsBits |  do $bits32ToInt $in)
         }
     }
 }
@@ -315,5 +317,5 @@ def ap-az [] {
     | get addressPrefixes
     | flatten
     | flatten
-    | par-each {|ap| $ap | parse '{a}.{b}.{c}.{d}/{subnet}' | first }
+    | cidr
 }
