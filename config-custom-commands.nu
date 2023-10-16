@@ -233,7 +233,7 @@ def rng-op [] {
     | where label != notesPlain
     | select label value
     | par-each {|r| {name: $r.label } | merge ($r.value | cidr) }
-    | sort-by name
+    | sort-by start
 }
 
 ### az ################################################################################
