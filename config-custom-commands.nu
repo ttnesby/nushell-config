@@ -225,7 +225,7 @@ def-env env-op [
     $envVars | par-each {|s| do $str2Record $s} | reduce -f {} {|e, acc| $acc | merge $e } | load-env
 }
 
-# op - get azure navno ip ranges
+# op - get azure navno named ip ranges
 def rng-op [] {
     op item get IP-Ranges --vault Development --format json
     | from json
@@ -335,7 +335,12 @@ def cidr-az [] {
         let inRange = $ranges 
             | each {|r| if $c.start >= $r.start and $c.end <= $r.end {$r.name} else {$unknown} }
             | filter {|s| $s != $unknown}
-            | collect {|l| if ($l | is-empty) {$unknown} else {$l | first} }
+            | collect {|l| 
+                if ($l | is-empty) {$unknown} 
+                else {
+                    if ($l | length) > 1 {'error'} else {$l | first}
+                } 
+            }
 
         $c | merge {range: $inRange}
     }
