@@ -316,13 +316,7 @@ def vnet-az [] {
         | from json
         # list of cidr's for a network
         | select name addressSpace
-        | each {|v|
-            {
-                subscription: $s.displayName
-                vnetName:$v.name
-                cidr: $v.addressSpace.addressPrefixes
-            }
-        }
+        | each {|v| {subscription: $s.displayName, vnetName:$v.name, cidr: $v.addressSpace.addressPrefixes} }
     }
     | where vnetName != []
     | flatten # networks
