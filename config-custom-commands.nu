@@ -86,6 +86,15 @@ def docs-record-op [
     }
 }
 
+# util - generate IPV4 string from 32 bits
+def bits32ToIPv4 [] {
+    let bits = $in
+
+    [0..8, 8..16, 16..24, 24..32]
+    | each {|r| $bits | str substring $r | into int -r 2 | into string }
+    | str join '.'
+}
+
 ### gen ################################################################################
 
 # gen - custom commands overview
@@ -172,12 +181,6 @@ def cidr [] {
     use std repeat
     # https://www.ipconvertertools.com/convert-cidr-manually-binary
 
-    let bits32ToIPv4Str = {|bits|
-        [0..8, 8..16, 16..24, 24..32]
-        | each {|r| $bits | str substring $r | into int -r 2 | into string }
-        | str join '.'
-    }
-
     let bits32ToInt = {|bits| $bits | into int -r 2 }
 
     $input | par-each {|it|
@@ -198,11 +201,11 @@ def cidr [] {
 
         {
             cidr: ($it)
-            subnetMask: ($networkBits + $noHostsBits | do $bits32ToIPv4Str $in)
-            networkAddress: ($ipAsSubnetSizeBits  + $noHostsBits |  do $bits32ToIPv4Str $in)
-            broadcastAddress: ($ipAsSubnetSizeBits + $bCastHostsBits |  do $bits32ToIPv4Str $in)
-            firstIP: ($ipAsSubnetSizeBits + $firstHostBits |  do $bits32ToIPv4Str $in)
-            lastIP: ($ipAsSubnetSizeBits + $lastHostBits |  do $bits32ToIPv4Str $in)
+            subnetMask: ($networkBits + $noHostsBits | bits32ToIPv4)
+            networkAddress: ($ipAsSubnetSizeBits  + $noHostsBits |  bits32ToIPv4)
+            broadcastAddress: ($ipAsSubnetSizeBits + $bCastHostsBits |  bits32ToIPv4)
+            firstIP: ($ipAsSubnetSizeBits + $firstHostBits |  bits32ToIPv4)
+            lastIP: ($ipAsSubnetSizeBits + $lastHostBits |  bits32ToIPv4)
             noOfHosts: (2 ** (32 - $subnetSize) - 2)
             start: ($ipAsSubnetSizeBits  + $noHostsBits |  do $bits32ToInt $in)
             end: ($ipAsSubnetSizeBits + $bCastHostsBits |  do $bits32ToInt $in)
@@ -296,8 +299,8 @@ def i-srv-az [
         o-az
         $servicePrincipal
         | do $str2Record $in
-        | do {|r| 
-            az login --service-principal --scope $r.scope --tenant $r.tenant_id --username $r.client_id --password $r.client_secret --only-show-errors --output json 
+        | do {|r|
+            az login --service-principal --scope $r.scope --tenant $r.tenant_id --username $r.client_id --password $r.client_secret --only-show-errors --output json
         } $in
         | from json | print $"Available subscriptions: ($in | length)"
     }
@@ -331,21 +334,65 @@ def cidr-az [] {
 
     vnet-az
     | par-each {|c| {subscription: $c.subscription, vnetName: $c.vnetName} | merge ($c.cidr | cidr) }
-    | par-each {|c|         
-        let inRange = $ranges 
+    | par-each {|c|
+        let inRange = $ranges
             | each {|r| if $c.start >= $r.start and $c.end <= $r.end {$r.name} else {$unknown} }
             | filter {|s| $s != $unknown}
-            | collect {|l| 
+            | collect {|l|
                 if ($l | is-empty) {
                     $unknown
                 } else {
                     if ($l | length) > 1 {'error'} else {$l | first}
-                } 
+                }
             }
 
         $c | merge {range: $inRange}
     }
     | sort-by start
+    | group-by range
+    | sort
+}
+
+# az - list all predefined network ranges with available and occupied ranges
+#
+# NB the last free network is invalid, just a temporary marker before fix
+def r-status-az [] {
+    let ranges = rng-op
+    let vnetInRanges = cidr-az
+
+    $vnetInRanges 
+    | items {|k,v|
+        if $k != 'unknown' {
+            let range = $ranges | where name == $k | first
+
+            let freeSpace = {|ref1, ref2|
+                let free = $ref2 - $ref1
+                if $free > 0 {
+                    ($ref1 | into bits | split row (char space) | reverse | str join | bits32ToIPv4) + $'/(32 - ($free | math log 2 | math floor))'
+                    | cidr
+                    | do {|c| {subscription: '### free ###', vnetName: '### free ###'} | merge $c } $in
+                    | do {|c| $c | merge {range: $k}} $in
+                }
+            }
+
+            $v
+            | enumerate
+            | each {|r|
+                if $r.index == 0 {
+                    do $freeSpace $range.start $r.item.start
+                } else {
+                    do $freeSpace (($v | (get ($r.index - 1)).end) + 1) $r.item.start
+                }
+            }
+            | collect {|l|
+                do $freeSpace (($v | last).end + 1) $range.end | append $l
+            }
+            | append $v | sort-by end
+        }
+    }
+    | where (not ($it | is-empty))
+    | flatten
+    | sort-by end
     | group-by range
     | sort
 }
