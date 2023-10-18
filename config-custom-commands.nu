@@ -1,100 +1,3 @@
-### util ################################################################################
-
-# util - fzf selection to string
-def fzf-str [col: string = column1] {
-    $in | fzf | each {|r| if ($r | is-empty) {''} else {$r | split column '|' | get $col | first }} | str join | str trim
-}
-
-# util - prepare a stream of two fields for fzf selection
-def fzf-concat [
-    col1Name: string
-    col2Name: string
-] {
-    let data = $in
-    let maxLength = $data | get $col1Name | str length | try { math max } catch { 0 }
-    let col1 = $data | get $col1Name | each {|s| $"($s | fill -a l -c ' ' -w ($maxLength + 4))| " }
-    let col2 = $data | get $col2Name
-
-    $col1 | zip $col2 | each {|r| $r.0 + $r.1 } | to text
-}
-
-# util - list of git repos
-def git-repos [
-    --update
-] {
-    let master = '~/.gitrepos.ttn'
-    let gitRepos = {glob /**/.git --depth 6 --no-file | path dirname | to text }
-
-    if $update or (not ($master | path exists)) {
-        do $gitRepos | save --force $master
-    }
-
-    $master | open --raw
-}
-
-# util - convert json arrary with subscriptions (az login or az account list) to fzf selectable text
-def subscription-fzf [] {
-    $in | from json | where state == 'Enabled' | select name id | sort-by name | fzf-concat name id
-}
-
-# util - get documents with tag from vault
-def docs-op [
-    --vault (-v): string    # which vault to find documents
-    --tag (-t): string      # which tag must exist in documents
-] {
-    op item list --vault $vault --format json
-    | from json
-    | where {|d| try { $d | get tags | $tag in $in } catch { false } }
-    | select title
-}
-
-# util - extract relevant fields record from document in vault
-def fields-op [
-    --vault (-v): string                # which vault hosting document
-    --title: string                     # document title
-    --relevantFields (-f): list<string> # fields to extract
-] {
-    let valOrRef = {|i| if $i.type == 'CONCEALED' {$i.reference} else {$i.value}}
-
-    op item get $title --vault $vault --format json
-    | from json
-    | get fields
-    | where label in $relevantFields
-    | reduce -f {} {|it, acc| $acc | merge {$it.label: (do $valOrRef $it)} }
-    | do {|r| if ($r | columns ) == $relevantFields {$r} } $in
-}
-
-# util - select document record(s) from vault
-def docs-record-op [
-    --vault (-v): string                # which vault to find documents
-    --tag (-t): string                  # which tag must exist in documents
-    --relevantFields (-f): list<string> # record content
-    --multiSelection                    # enable fzf multi selection
-] {
-    let data = docs-op --vault $vault --tag $tag
-    | par-each {|d| fields-op --vault $vault --title $d.title --relevantFields $relevantFields}
-    | try { sort-by $relevantFields.0 }
-
-    if ($data | is-empty) {} else {
-        let postProcess = {|d| $d | to text | split row (char newline) | filter {|r| $r != ''} }
-
-        if $multiSelection {
-            $data | fzf --multi --ansi --header-lines=2 --cycle | do $postProcess $in
-        } else {
-            $data | fzf --ansi --header-lines=2 --cycle | do $postProcess $in
-        }
-    }
-}
-
-# util - generate IPV4 string from 32 bits
-def bits32ToIPv4 [] {
-    let bits = $in
-
-    [0..8, 8..16, 16..24, 24..32]
-    | each {|r| $bits | str substring $r | into int -r 2 | into string }
-    | str join '.'
-}
-
 ### gen ################################################################################
 
 # gen - custom commands overview
@@ -145,18 +48,39 @@ alias gol = ~/goland
 
 ### cd ################################################################################
 
+# util - list of git repos
+def git-repos [
+    --update
+] {
+    # https://www.nushell.sh/book/loading_data.html#nuon
+    let master = '~/.gitrepos.nuon'
+    let gitRepos = { glob /**/.git --depth 6 --no-file | path dirname | wrap git-repos }
+
+    if $update or (not ($master | path exists)) {
+        do $gitRepos | save --force $master
+    }
+
+    $master | open | get git-repos
+}
+
+# util - fzf selection with query and single selection of path
+def fzf-query-single-path [q: string = ''] {
+    $in
+    | fzf --query $q --select-1 --ansi --cycle
+    | lines
+    | split column --collapse-empty (char space) 'idx' 'path'
+    | match $in {
+        [] => { '.' }
+        [$l] => { $l.path }
+    }
+}
+
 # cd - to git repo
-def-env gd [q: string = ''] { git-repos | fzf -q $q -1 | cd $in }
+def-env gd [q: string = ''] { git-repos | fzf-query-single-path $q | cd $in }
 
 # cd - to terraform solution within a repo
-def-env td [] {
-    glob **/*.tf --depth 7 --not [**/modules/**]
-    | path dirname
-    | uniq
-    | to text
-    | fzf
-    | cd $in
-}
+def-env td [q: string = ''] { glob **/*.tf --depth 7 --not [**/modules/**] | path dirname | uniq | fzf-query-single-path $q | cd $in }
+
 
 ### git ###############################################################################
 
@@ -171,6 +95,15 @@ def gbd [] {
 
 ### ipv4 ################################################################################
 
+# util - generate IPV4 string from 32 bits
+def bits32ToIPv4 [] {
+    let bits = $in
+
+    [0..8, 8..16, 16..24, 24..32]
+    | each {|r| $bits | str substring $r | into int -r 2 | into string }
+    | str join '.'
+}
+
 # ipv4 - extract details from cidr
 #
 # single cidr:   '110.40.240.16/22' | cidr
@@ -183,10 +116,11 @@ def cidr [] {
 
     let bits32ToInt = {|bits| $bits | into int -r 2 }
 
-    $input | par-each {|it|
-        let asRec = $it | parse '{a}.{b}.{c}.{d}/{subnet}' | first
-        let subnetSize = $asRec.subnet | into int
-        let ipAsSubnetSizeBits = $asRec
+    $input
+    | parse '{a}.{b}.{c}.{d}/{subnet}'
+    | par-each {|rec|
+        let subnetSize = $rec.subnet | into int
+        let ipAsSubnetSizeBits = $rec
             | values
             | drop
             | each {|s| $s | into int | into bits | str substring 0..8}
@@ -200,7 +134,7 @@ def cidr [] {
         let lastHostBits = ('1' | repeat (32 - $subnetSize - 1) | str join) + '0'
 
         {
-            cidr: ($it)
+            cidr: (($ipAsSubnetSizeBits  + $noHostsBits |  bits32ToIPv4) + $'/($subnetSize)')
             subnetMask: ($networkBits + $noHostsBits | bits32ToIPv4)
             networkAddress: ($ipAsSubnetSizeBits  + $noHostsBits |  bits32ToIPv4)
             broadcastAddress: ($ipAsSubnetSizeBits + $bCastHostsBits |  bits32ToIPv4)
@@ -213,8 +147,53 @@ def cidr [] {
     }
 }
 
+# util - generate CIDR details from int range, with additional sub/vnet/range context
+def intRangeToCIDRDetails [
+    --ref1:int                          # start int
+    --ref2:int                          # end int
+    --range:string                      # which known range to be used
+    --text:string = '      <available>' # shown as available
+] {
+    let free = $ref2 - $ref1
+    if $free > 0 {
+        ($ref1 | into bits | split row (char space) | reverse | str join | bits32ToIPv4) + $'/(32 - ($free | math log 2 | math floor))'
+        | cidr
+        | first
+        | do {|c| {subscription: $text, vnetName: $text} | merge $c } $in
+        | do {|c| $c | merge {range: $range}} $in
+    }
+}
+
 
 ### op ################################################################################
+
+# util - get documents with tag from vault
+def docs-op [
+    --vault (-v): string    # which vault to find documents
+    --tag (-t): string      # which tag must exist in documents
+] {
+    op item list --vault $vault --format json
+    | from json
+    | where {|d| try { $d | get tags | $tag in $in } catch { false } }
+    | select title
+}
+
+# util - extract relevant fields record from document in vault
+def fields-op [
+    --vault (-v): string                # which vault hosting document
+    --title: string                     # document title
+    --relevantFields (-f): list<string> # fields to extract
+] {
+    let valOrRef = {|i| if $i.type == 'CONCEALED' {$i.reference} else {$i.value}}
+
+    op item get $title --vault $vault --format json
+    | from json
+    | get fields
+    | where label in $relevantFields
+    | reduce -f {} {|it, acc| $acc | merge {$it.label: (do $valOrRef $it)} }
+    # only documents with satisfying all relevant fields
+    | do {|r| if ($r | columns ) == $relevantFields {$r} } $in
+}
 
 # op - set environment variables in current scope based on 1Password secrets selection
 def-env env-op [
@@ -222,10 +201,19 @@ def-env env-op [
     --tag (-t): string = env_var        # which tag must exist in documents
 ] {
     let relevantFields = ['name' 'value']
-    let envVars = docs-record-op --vault $vault --tag $tag --relevantFields $relevantFields --multiSelection
-    let str2Record = {|s| $s | split row ' ' | filter {|r| $r != ''} | collect {|l| {$l.1:$"(op read $l.2)"}} }
 
-    $envVars | par-each {|s| do $str2Record $s} | reduce -f {} {|e, acc| $acc | merge $e } | load-env
+    docs-op --vault $vault --tag $tag
+    | par-each {|d| fields-op --vault $vault --title $d.title --relevantFields $relevantFields}
+    | fzf --multi --ansi --cycle --header-lines=2
+    | lines
+    | split column --collapse-empty (char space) 'idx' 'name' 'value'
+    | match $in {
+        [] => { return null }
+        $d => { $d }
+    }
+    | each {|r| {$r.name:$"(op read $r.value)"} }
+    | reduce -f {} {|e, acc| $acc | merge $e }
+    | load-env
 }
 
 # op - get azure navno named ip ranges
@@ -235,75 +223,85 @@ def rng-op [] {
     | get fields
     | where label != notesPlain
     | select label value
-    | par-each {|r| {name: $r.label } | merge ($r.value | cidr) }
+    | par-each {|r| {name: $r.label } | merge ($r.value | cidr | first) }
     | sort-by start
 }
 
 ### az ################################################################################
 
-# az - az account set, fzf selected subscription
-def as-az [] {
-    let getAccounts = { az account list --only-show-errors --output json | subscription-fzf }
-    let accounts = do $getAccounts
-    let sel = if ($accounts | is-empty) { (i-az --subList) | fzf-str column2 } else { $accounts | fzf-str column2}
+# util - raw sub. list to names and id's
+def sub-name-id [] { $in | from json | select name id | sort-by name }
 
-    if $sel != '' {
-        az account set --subscription ($sel)
+def fzf-query-single-sub [q: string = ''] {
+    $in
+    | fzf --query $q --select-1 --ansi --cycle --header-lines=2
+    | lines
+    | split column --collapse-empty (char space) 'idx' 'name' 'id'
+}
+
+# az - az account set with fzf selected subscription
+def as-az [q: string = ''] {
+    az account list --only-show-errors --output json
+    | sub-name-id
+    | match $in {
+        [] => { i-az --subList | sub-name-id }
+        $l => {$l}
+    }
+    | fzf-query-single-sub $q
+    | match $in {
+        [] => { null }
+        [$l] => { az account set --subscription ($l).id }
     }
 }
 
 # az - az logout
 def o-az [] {
-
-    let subscriptions = az account list --output json --only-show-errors | from json
-    if ($subscriptions | is-empty) {} else {az logout}
+    az account list --output json --only-show-errors
+    | from json
+    | match $in {
+        [] => { null }
+        _ => { az logout }
+    }
 }
 
 # az - az login via web browser
 def i-az [
     --scope (-s): string = 'https://graph.microsoft.com/.default'
     --subList
-    ] {
-        let login = {az login --scope ($scope) --only-show-errors --output json}
+] {
+    let login = { az login --scope $scope --only-show-errors --output json }
 
-        o-az
-        if $subList {
-            do $login | subscription-fzf
-        } else {
-            do $login | from json | print $"Available subscriptions: ($in | length)"
-        }
+    o-az
+    if $subList {
+        do $login
+    } else {
+        do $login | from json | print $"Available subscriptions: ($in | length)"
+    }
 }
 
 # az - az login with fzf selected service principal
 def i-srv-az [
+    q: string = ''
     --vault (-v): string = Development                              # which vault to find env var. documents
     --tag (-t): string = service_principal                          # which tag must exist in service principal documents
     --scope (-s): string = 'https://graph.microsoft.com/.default'   # default scope for service principal
 ] {
     let relevantFields = ['name' 'tenant_id' 'client_id' 'client_secret']
-    let servicePrincipal = docs-record-op --vault $vault --tag $tag --relevantFields $relevantFields
 
-    let str2Record = {|s|
-        $s
-        | split row ' '
-        | filter {|r| $r != ''}
-        | collect {|l| {
-            tenant_id:$l.2,
-            client_id:$"(op read $l.3)",
-            client_secret:$"(op read $l.4)"
-            scope: $scope
-        }}
+    docs-op --vault $vault --tag $tag
+    | par-each {|d| fields-op --vault $vault --title $d.title --relevantFields $relevantFields }
+    | fzf --query $q --select-1 --ansi --cycle --header-lines=2
+    | lines
+    | split column --collapse-empty (char space) 'idx' 'name' 'tenant_id' 'client_id' 'client_secret'
+    | match $in {
+        [] => { return null }
+        [$r] => {
+            o-az
+            az login --service-principal --scope $scope --tenant $r.tenant_id --username (op read $r.client_id) --password (op read $r.client_secret) --only-show-errors --output json
+        }
     }
-
-    if ($servicePrincipal | is-empty) {} else {
-        o-az
-        $servicePrincipal
-        | do $str2Record $in
-        | do {|r|
-            az login --service-principal --scope $r.scope --tenant $r.tenant_id --username $r.client_id --password $r.client_secret --only-show-errors --output json
-        } $in
-        | from json | print $"Available subscriptions: ($in | length)"
-    }
+    | from json
+    | print $"Available subscriptions: ($in | length)"
 }
 
 # az - get all cidr's, scoped by authenticated user
@@ -332,7 +330,7 @@ def cidr-az [] {
     const unknown = 'unknown'
 
     vnet-az
-    | par-each {|c| {subscription: $c.subscription, vnetName: $c.vnetName} | merge ($c.cidr | cidr) }
+    | par-each {|c| {subscription: $c.subscription, vnetName: $c.vnetName} | merge ($c.cidr | cidr | first) }
     | par-each {|c|
         let inRange = $ranges
             | each {|r| if $c.start >= $r.start and $c.end <= $r.end {$r.name} else {$unknown} }
@@ -347,7 +345,7 @@ def cidr-az [] {
 
         $c | merge {range: $inRange}
     }
-    | sort-by start
+    | sort-by end
     | group-by range
     | sort
 }
@@ -360,33 +358,21 @@ def r-status-az [] {
     let ranges = rng-op
     let vnetInRanges = cidr-az
 
-    $vnetInRanges 
-    | reject unknown 
+    $vnetInRanges
+    | reject unknown
     | items {|k,v|
         let range = $ranges | where name == $k | first
-
-        let freeSpace = {|ref1, ref2|
-            let free = $ref2 - $ref1
-            if $free > 0 {
-                ($ref1 | into bits | split row (char space) | reverse | str join | bits32ToIPv4) + $'/(32 - ($free | math log 2 | math floor))'
-                | cidr
-                | do {|c| {subscription: $available, vnetName: $available} | merge $c } $in
-                | do {|c| $c | merge {range: $k}} $in
-            }
-        }
 
         $v
         | enumerate
         | each {|r|
             if $r.index == 0 {
-                do $freeSpace $range.start $r.item.start
+                intRangeToCIDRDetails --ref1 $range.start --ref2 $r.item.start --range $k
             } else {
-                do $freeSpace (($v | (get ($r.index - 1)).end) + 1) $r.item.start
+                intRangeToCIDRDetails --ref1 (($v | (get ($r.index - 1)).end) + 1) --ref2 $r.item.start --range $k
             }
         }
-        | collect {|l|
-            do $freeSpace (($v | last).end + 1) $range.end | append $l
-        }
+        | collect {|l| intRangeToCIDRDetails --ref1 (($v | last).end + 1) --ref2 $range.end --range $k | append $l }
         | append $v | sort-by end
     }
     | flatten
