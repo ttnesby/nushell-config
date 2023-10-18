@@ -321,7 +321,6 @@ def vnet-az [] {
         | select name addressSpace
         | each {|v| {subscription: $s.displayName, vnetName:$v.name, cidr: $v.addressSpace.addressPrefixes} }
     }
-    | where vnetName != []
     | flatten # networks
     | flatten # cidrs' in a network
     | sort-by subscription
@@ -357,40 +356,39 @@ def cidr-az [] {
 #
 # NB the last free network is invalid, just a temporary marker before fix
 def r-status-az [] {
+    const available = '      <available>'
     let ranges = rng-op
     let vnetInRanges = cidr-az
 
     $vnetInRanges 
+    | reject unknown 
     | items {|k,v|
-        if $k != 'unknown' {
-            let range = $ranges | where name == $k | first
+        let range = $ranges | where name == $k | first
 
-            let freeSpace = {|ref1, ref2|
-                let free = $ref2 - $ref1
-                if $free > 0 {
-                    ($ref1 | into bits | split row (char space) | reverse | str join | bits32ToIPv4) + $'/(32 - ($free | math log 2 | math floor))'
-                    | cidr
-                    | do {|c| {subscription: '### free ###', vnetName: '### free ###'} | merge $c } $in
-                    | do {|c| $c | merge {range: $k}} $in
-                }
+        let freeSpace = {|ref1, ref2|
+            let free = $ref2 - $ref1
+            if $free > 0 {
+                ($ref1 | into bits | split row (char space) | reverse | str join | bits32ToIPv4) + $'/(32 - ($free | math log 2 | math floor))'
+                | cidr
+                | do {|c| {subscription: $available, vnetName: $available} | merge $c } $in
+                | do {|c| $c | merge {range: $k}} $in
             }
-
-            $v
-            | enumerate
-            | each {|r|
-                if $r.index == 0 {
-                    do $freeSpace $range.start $r.item.start
-                } else {
-                    do $freeSpace (($v | (get ($r.index - 1)).end) + 1) $r.item.start
-                }
-            }
-            | collect {|l|
-                do $freeSpace (($v | last).end + 1) $range.end | append $l
-            }
-            | append $v | sort-by end
         }
+
+        $v
+        | enumerate
+        | each {|r|
+            if $r.index == 0 {
+                do $freeSpace $range.start $r.item.start
+            } else {
+                do $freeSpace (($v | (get ($r.index - 1)).end) + 1) $r.item.start
+            }
+        }
+        | collect {|l|
+            do $freeSpace (($v | last).end + 1) $range.end | append $l
+        }
+        | append $v | sort-by end
     }
-    | where (not ($it | is-empty))
     | flatten
     | sort-by end
     | group-by range
