@@ -63,23 +63,11 @@ def git-repos [
     $master | open | get git-repos
 }
 
-# util - fzf selection with query and single selection of path
-def fzf-query-single-path [q: string = ''] {
-    $in
-    | fzf --query $q --select-1 --ansi --cycle
-    | lines
-    | split column --collapse-empty (char space) 'idx' 'path'
-    | match $in {
-        [] => { '.' }
-        [$l] => { $l.path }
-    }
-}
-
 # cd - to git repo
-def-env gd [q: string = ''] { git-repos | fzf-query-single-path $q | cd $in }
+def-env gd [] { git-repos | input list -f 'search:' | cd $in }
 
 # cd - to terraform solution within a repo
-def-env td [q: string = ''] { glob **/*.tf --depth 7 --not [**/modules/**] | path dirname | uniq | fzf-query-single-path $q | cd $in }
+def-env td [] { glob **/*.tf --depth 7 --not [**/modules/**] | path dirname | uniq | input list -f 'search:' | cd $in }
 
 
 ### git ###############################################################################
@@ -204,11 +192,9 @@ def-env env-op [
 
     docs-op --vault $vault --tag $tag
     | par-each {|d| fields-op --vault $vault --title $d.title --relevantFields $relevantFields}
-    | fzf --multi --ansi --cycle --header-lines=2
-    | lines
-    | split column --collapse-empty (char space) 'idx' 'name' 'value'
+    | input list -m
     | match $in {
-        [] => { return null }
+        '' => { return null }
         $d => { $d }
     }
     | each {|r| {$r.name:$"(op read $r.value)"} }
@@ -232,25 +218,18 @@ def rng-op [] {
 # util - raw sub. list to names and id's
 def sub-name-id [] { $in | from json | select name id | sort-by name }
 
-def fzf-query-single-sub [q: string = ''] {
-    $in
-    | fzf --query $q --select-1 --ansi --cycle --header-lines=2
-    | lines
-    | split column --collapse-empty (char space) 'idx' 'name' 'id'
-}
-
 # az - az account set with fzf selected subscription
-def as-az [q: string = ''] {
+def as-az [] {
     az account list --only-show-errors --output json
     | sub-name-id
     | match $in {
         [] => { i-az --subList | sub-name-id }
         $l => {$l}
     }
-    | fzf-query-single-sub $q
+    | input list -f 'search:'
     | match $in {
-        [] => { null }
-        [$l] => { az account set --subscription ($l).id }
+        '' => {}
+        $l => { az account set --subscription ($l).id }
     }
 }
 
@@ -281,7 +260,6 @@ def i-az [
 
 # az - az login with fzf selected service principal
 def i-srv-az [
-    q: string = ''
     --vault (-v): string = Development                              # which vault to find env var. documents
     --tag (-t): string = service_principal                          # which tag must exist in service principal documents
     --scope (-s): string = 'https://graph.microsoft.com/.default'   # default scope for service principal
@@ -290,12 +268,10 @@ def i-srv-az [
 
     docs-op --vault $vault --tag $tag
     | par-each {|d| fields-op --vault $vault --title $d.title --relevantFields $relevantFields }
-    | fzf --query $q --select-1 --ansi --cycle --header-lines=2
-    | lines
-    | split column --collapse-empty (char space) 'idx' 'name' 'tenant_id' 'client_id' 'client_secret'
+    | input list -f 'search:'
     | match $in {
-        [] => { return null }
-        [$r] => {
+        '' => { return null }
+        $r => {
             o-az
             az login --service-principal --scope $scope --tenant $r.tenant_id --username (op read $r.client_id) --password (op read $r.client_secret) --only-show-errors --output json
         }
