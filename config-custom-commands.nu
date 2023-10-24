@@ -73,7 +73,9 @@ def-env td [] { glob **/*.tf --depth 7 --not [**/modules/**] | path dirname | un
 ### git ###############################################################################
 
 # git - gently try to delete merged branches, excluding the checked out one
-def gbd [] {
+def gbd [main: string = main] {
+    git checkout main
+    git pull 
     git branch --merged
     | lines
     | where $it !~ '\*'
@@ -301,29 +303,28 @@ def vnet-az [] {
 }
 
 # az - group all cidr's details by known network ranges, scoped by authenticated user
-def cidr-az [] {
+def cidr-az [
+    --group
+] {
     let ranges = rng-op
-    const unknown = 'unknown'
 
     vnet-az
-    | par-each {|c| {subscription: $c.subscription, vnetName: $c.vnetName} | merge ($c.cidr | cidr | first) }
     | par-each {|c|
-        let inRange = $ranges
-            | each {|r| if $c.start >= $r.start and $c.end <= $r.end {$r.name} else {$unknown} }
-            | filter {|s| $s != $unknown}
-            | collect {|l|
-                if ($l | is-empty) {
-                    $unknown
-                } else {
-                    if ($l | length) > 1 {'error'} else {$l | first}
-                }
+        let cidrDetails = $c.cidr | cidr | first
+        let inRange = $ranges 
+            | where start <= $cidrDetails.start and end >= $cidrDetails.end
+            | match $in {
+                [] => {'unknown'}
+                [$r] => {$r.name}
+                $l => { $'error - ($l | reduce -f '' {|r,acc| $acc + (char pipe) + $r.name} )'}
             }
 
-        $c | merge {range: $inRange}
+        {subscription: $c.subscription, vnetName: $c.vnetName} 
+        | merge $cidrDetails
+        | merge {range: $inRange}
     }
-    | sort-by end
-    | group-by range
-    | sort
+    | sort-by -i subscription vnetName
+    | if $group { $in | group-by range | sort } else {$in}
 }
 
 # az - list all predefined network ranges with available and occupied ranges
