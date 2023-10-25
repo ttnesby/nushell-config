@@ -124,7 +124,6 @@ def cidr [] {
         let lastHostBits = ('1' | repeat (32 - $subnetSize - 1) | str join) + '0'
 
         {
-            cidr: (($ipAsSubnetSizeBits  + $noHostsBits |  bits32ToIPv4) + $'/($subnetSize)')
             subnetMask: ($networkBits + $noHostsBits | bits32ToIPv4)
             networkAddress: ($ipAsSubnetSizeBits  + $noHostsBits |  bits32ToIPv4)
             broadcastAddress: ($ipAsSubnetSizeBits + $bCastHostsBits |  bits32ToIPv4)
@@ -148,9 +147,10 @@ def intRangeToCIDRDetails [
 
     if $free == 0 { return }
 
-    let cidr = ($ref1 | into bits | split row (char space) | reverse | str join | bits32ToIPv4) + $'/(32 - ($free | math log 2 | math floor))' | cidr | first
+    let cidr = ($ref1 | into bits | split row (char space) | reverse | str join | bits32ToIPv4) + $'/(32 - ($free | math log 2 | math floor))'
+    let details = $cidr | cidr | first
         
-    {subscription: $text, vnetName: $text} | merge $cidr  | merge {range: $range}
+    {subscription: $text, vnetName: $text, cidr: $cidr} | merge $details  | merge {range: $range}
 }
 
 
@@ -161,10 +161,7 @@ def docs-op [
     --vault (-v): string    # which vault to find documents
     --tag (-t): string      # which tag must exist in documents
 ] {
-    op item list --vault $vault --format json
-    | from json
-    | where {|d| try { $d | get tags | $tag in $in } catch { false } }
-    | select title
+    op item list --vault $vault -- tags $tag --format json | from json | select title
 }
 
 # util - extract relevant fields record from document in vault
@@ -271,20 +268,20 @@ def i-srv-az [
 }
 
 # az - get azure navno master ip ranges
-def ip-az [] {
+def ip-range-az [] {
     op item get IP-Ranges --vault Development --format json
     | from json
     | get fields
     | where label != notesPlain
     | select label value
-    | par-each {|r| {name: $r.label } | merge ($r.value | cidr | first) }
+    | par-each {|r| {name: $r.label, cidr: $r.value } | merge ($r.value | cidr | first) }
     | sort-by end name
 }
 
 # util - calculate cidr details and relate to 'known' IP ranges
 def vnet-details [] {
     let cidrs = $in
-    let ranges = ip-az
+    let ranges = ip-range-az
 
     $cidrs
     | par-each {|r|
@@ -297,7 +294,7 @@ def vnet-details [] {
                 $l => { $'error - ($l | reduce -f '' {|r,acc| $acc + (char pipe) + $r.name} )'}
             }
 
-        $r | reject cidr | merge $details | merge {range: $inRange}
+        $r | merge $details | merge {range: $inRange}
     }
     | sort-by -i end subscription vnetName
 }
@@ -329,9 +326,9 @@ def vnet-az [
 #
 # NB the last free network is invalid, just a temporary marker before fix
 def ip-status-az [
-    --only_gaps
+    --only_available
 ] {
-    let ipRanges = ip-az
+    let ipRanges = ip-range-az
     let cidrDetails = vnet-az --details | group-by range | sort
 
     $cidrDetails
@@ -349,7 +346,7 @@ def ip-status-az [
         # NB - adding 1 to 0.end due to 1 in diff. between subnets, 
         | where $it.0.end + 1 < $it.1.start                 # only gaps are relevant
         | each {|p| intRangeToCIDRDetails --ref1 ($p.0.end + 1)  --ref2 $p.1.start --range $k}
-        | if $only_gaps { $in } else { $in | append $v | sort-by end}
+        | if $only_available { $in } else { $in | append $v | sort-by end}
     }
     | flatten | sort-by end | group-by range | sort
 }
