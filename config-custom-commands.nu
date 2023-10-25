@@ -73,8 +73,8 @@ def-env td [] { glob **/*.tf --depth 7 --not [**/modules/**] | path dirname | un
 ### git ###############################################################################
 
 # git - gently try to delete merged branches, excluding the checked out one
-def gbd [main: string = main] {
-    git checkout main
+def gbd [branch: string = main] {
+    git checkout $branch
     git pull 
     git branch --merged
     | lines
@@ -181,7 +181,7 @@ def fields-op [
     | get fields
     | where label in $relevantFields
     | reduce -f {} {|it, acc| $acc | merge {$it.label: (do $valOrRef $it)} }
-    # only documents with satisfying all relevant fields
+    # only documents with all relevant fields
     | do {|r| if ($r | columns ) == $relevantFields {$r} } $in
 }
 
@@ -323,7 +323,7 @@ def cidr-az [
         | merge $cidrDetails
         | merge {range: $inRange}
     }
-    | sort-by -i subscription vnetName
+    | sort-by -i end subscription vnetName
     | if $group { $in | group-by range | sort } else {$in}
 }
 
@@ -331,9 +331,8 @@ def cidr-az [
 #
 # NB the last free network is invalid, just a temporary marker before fix
 def r-status-az [] {
-    const available = '      <available>'
     let ranges = rng-op
-    let vnetInRanges = cidr-az
+    let vnetInRanges = cidr-az --group
 
     $vnetInRanges
     | reject unknown
@@ -341,6 +340,7 @@ def r-status-az [] {
         let range = $ranges | where name == $k | first
 
         $v
+        | sort-by -i end subscription vnetName
         | enumerate
         | each {|r|
             if $r.index == 0 {
