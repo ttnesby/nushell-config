@@ -73,7 +73,9 @@ def-env td [] { glob **/*.tf --depth 7 --not [**/modules/**] | path dirname | un
 ### git ###############################################################################
 
 # git - gently try to delete merged branches, excluding the checked out one
-def gbd [] {
+def gbd [branch: string = main] {
+    git checkout $branch
+    git pull
     git branch --merged
     | lines
     | where $it !~ '\*'
@@ -140,16 +142,15 @@ def intRangeToCIDRDetails [
     --ref1:int                          # start int
     --ref2:int                          # end int
     --range:string                      # which known range to be used
-    --text:string = '      <available>' # shown as available
+    --text:string = ''                  # text for subscription and vnetName
 ] {
     let free = $ref2 - $ref1
-    if $free > 0 {
-        ($ref1 | into bits | split row (char space) | reverse | str join | bits32ToIPv4) + $'/(32 - ($free | math log 2 | math floor))'
-        | cidr
-        | first
-        | do {|c| {subscription: $text, vnetName: $text} | merge $c } $in
-        | do {|c| $c | merge {range: $range}} $in
-    }
+
+    if $free == 0 { return }
+
+    let cidr = ($ref1 | into bits | split row (char space) | reverse | str join | bits32ToIPv4) + $'/(32 - ($free | math log 2 | math floor))' | cidr | first
+        
+    {subscription: $text, vnetName: $text} | merge $cidr  | merge {range: $range}
 }
 
 
@@ -179,7 +180,7 @@ def fields-op [
     | get fields
     | where label in $relevantFields
     | reduce -f {} {|it, acc| $acc | merge {$it.label: (do $valOrRef $it)} }
-    # only documents with satisfying all relevant fields
+    # only documents with all relevant fields
     | do {|r| if ($r | columns ) == $relevantFields {$r} } $in
 }
 
@@ -202,23 +203,12 @@ def-env env-op [
     | load-env
 }
 
-# op - get azure navno named ip ranges
-def rng-op [] {
-    op item get IP-Ranges --vault Development --format json
-    | from json
-    | get fields
-    | where label != notesPlain
-    | select label value
-    | par-each {|r| {name: $r.label } | merge ($r.value | cidr | first) }
-    | sort-by start
-}
-
 ### az ################################################################################
 
 # util - raw sub. list to names and id's
 def sub-name-id [] { $in | from json | select name id | sort-by name }
 
-# az - az account set with fzf selected subscription
+# az - az account set with selected subscription
 def as-az [] {
     az account list --only-show-errors --output json
     | sub-name-id
@@ -258,7 +248,7 @@ def i-az [
     }
 }
 
-# az - az login with fzf selected service principal
+# az - az login with selected service principal
 def i-srv-az [
     --vault (-v): string = Development                              # which vault to find env var. documents
     --tag (-t): string = service_principal                          # which tag must exist in service principal documents
@@ -280,8 +270,42 @@ def i-srv-az [
     | print $"Available subscriptions: ($in | length)"
 }
 
-# az - get all cidr's, scoped by authenticated user
-def vnet-az [] {
+# az - get azure navno master ip ranges
+def ip-az [] {
+    op item get IP-Ranges --vault Development --format json
+    | from json
+    | get fields
+    | where label != notesPlain
+    | select label value
+    | par-each {|r| {name: $r.label } | merge ($r.value | cidr | first) }
+    | sort-by end name
+}
+
+# util - calculate cidr details and relate to 'known' IP ranges
+def vnet-details [] {
+    let cidrs = $in
+    let ranges = ip-az
+
+    $cidrs
+    | par-each {|r|
+        let details = $r.cidr | cidr | first
+        let inRange = $ranges
+            | where start <= $details.start and end >= $details.end
+            | match $in {
+                [] => {'unknown'}
+                [$r] => {$r.name}
+                $l => { $'error - ($l | reduce -f '' {|r,acc| $acc + (char pipe) + $r.name} )'}
+            }
+
+        $r | reject cidr | merge $details | merge {range: $inRange}
+    }
+    | sort-by -i end subscription vnetName
+}
+
+# az - get all cidr's for all vnet's, scoped by authenticated user
+def vnet-az [
+    --details   # add cidr details for each address prefix and tag with known ip ranges
+] {
     # list of subscriptions
     az account management-group entities list
     | from json
@@ -297,62 +321,35 @@ def vnet-az [] {
     }
     | flatten # networks
     | flatten # cidrs' in a network
-    | sort-by subscription
+    | sort-by subscription vnetName
+    | if $details { $in | vnet-details } else { $in }
 }
 
-# az - group all cidr's details by known network ranges, scoped by authenticated user
-def cidr-az [] {
-    let ranges = rng-op
-    const unknown = 'unknown'
-
-    vnet-az
-    | par-each {|c| {subscription: $c.subscription, vnetName: $c.vnetName} | merge ($c.cidr | cidr | first) }
-    | par-each {|c|
-        let inRange = $ranges
-            | each {|r| if $c.start >= $r.start and $c.end <= $r.end {$r.name} else {$unknown} }
-            | filter {|s| $s != $unknown}
-            | collect {|l|
-                if ($l | is-empty) {
-                    $unknown
-                } else {
-                    if ($l | length) > 1 {'error'} else {$l | first}
-                }
-            }
-
-        $c | merge {range: $inRange}
-    }
-    | sort-by end
-    | group-by range
-    | sort
-}
-
-# az - list all predefined network ranges with available and occupied ranges
+# az - status of master ip ranges, used - and available free sub ranges
 #
 # NB the last free network is invalid, just a temporary marker before fix
-def r-status-az [] {
-    const available = '      <available>'
-    let ranges = rng-op
-    let vnetInRanges = cidr-az
+def ip-status-az [
+    --only_gaps
+] {
+    let ipRanges = ip-az
+    let cidrDetails = vnet-az --details | group-by range | sort
 
-    $vnetInRanges
+    $cidrDetails
     | reject unknown
     | items {|k,v|
-        let range = $ranges | where name == $k | first
-
-        $v
-        | enumerate
-        | each {|r|
-            if $r.index == 0 {
-                intRangeToCIDRDetails --ref1 $range.start --ref2 $r.item.start --range $k
-            } else {
-                intRangeToCIDRDetails --ref1 (($v | (get ($r.index - 1)).end) + 1) --ref2 $r.item.start --range $k
-            }
-        }
-        | collect {|l| intRangeToCIDRDetails --ref1 (($v | last).end + 1) --ref2 $range.end --range $k | append $l }
-        | append $v | sort-by end
+        let r = $ipRanges | where name == $k | first
+        
+        $v 
+        | select start end 
+        # see (NB) below, the exceptions are start and end for the ip range itself
+        | prepend {start: $r.start, end: ($r.start - 1)}    # prepend the ip range itself, only the start value
+        | append {start: $r.end, end: $r.end}               # append the ip range itself, only the end value
+        | sort-by end                                       # sort by end value
+        | window 2                                          # pair-wise iteration of all start-end
+        # NB - adding 1 to 0.end due to 1 in diff. between subnets, 
+        | where $it.0.end + 1 < $it.1.start                 # only gaps are relevant
+        | each {|p| intRangeToCIDRDetails --ref1 ($p.0.end + 1)  --ref2 $p.1.start --range $k}
+        | if $only_gaps { $in } else { $in | append $v | sort-by end}
     }
-    | flatten
-    | sort-by end
-    | group-by range
-    | sort
+    | flatten | sort-by end | group-by range | sort
 }
