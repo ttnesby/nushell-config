@@ -149,7 +149,7 @@ def intRangeToCIDRDetails [
 
     let cidr = ($ref1 | into bits | split row (char space) | reverse | str join | bits32ToIPv4) + $'/(32 - ($free | math log 2 | math floor))'
     let details = $cidr | cidr | first
-        
+
     {subscription: $text, vnetName: $text, cidr: $cidr} | merge $details  | merge {range: $range}
 }
 
@@ -322,6 +322,33 @@ def vnet-az [
     | if $details { $in | vnet-details } else { $in }
 }
 
+def dfr-vnet-az [] {
+    let subs = az account management-group entities list
+    | from json
+    | dfr into-lazy
+    | dfr filter-with ((dfr col type) == /subscriptions)
+    | dfr select displayName name
+
+    $subs
+    | dfr collect
+    | dfr into-nu
+    | par-each {|s|
+        az network vnet list --subscription $s.name | from json
+        | each {|vnet|
+            {
+                subscription: $s.displayName
+                vnet: $vnet.name
+                enableDdosProtection: $vnet.enableDdosProtection,
+                dhcpOptions: (try { $vnet.dhcpOptions.dnsServers } catch {[]})
+                virtualNetworkPeerings: ($vnet.virtualNetworkPeerings | each {|p| $p.id | path basename })
+                cidr: $vnet.addressSpace.addressPrefixes
+            }
+        }
+    }
+    | flatten
+    | dfr into-lazy
+}
+
 # az - status of master ip ranges, used - and available free sub ranges
 #
 # NB the last free network is invalid, just a temporary marker before fix
@@ -335,15 +362,15 @@ def ip-status-az [
     | reject unknown
     | items {|k,v|
         let r = $ipRanges | where name == $k | first
-        
-        $v 
-        | select start end 
+
+        $v
+        | select start end
         # see (NB) below, the exceptions are start and end for the ip range itself
         | prepend {start: $r.start, end: ($r.start - 1)}    # prepend the ip range itself, only the start value
         | append {start: $r.end, end: $r.end}               # append the ip range itself, only the end value
         | sort-by end                                       # sort by end value
         | window 2                                          # pair-wise iteration of all start-end
-        # NB - adding 1 to 0.end due to 1 in diff. between subnets, 
+        # NB - adding 1 to 0.end due to 1 in diff. between subnets,
         | where $it.0.end + 1 < $it.1.start                 # only gaps are relevant
         | each {|p| intRangeToCIDRDetails --ref1 ($p.0.end + 1)  --ref2 $p.1.start --range $k}
         | if $only_available { $in } else { $in | append $v | sort-by end}
