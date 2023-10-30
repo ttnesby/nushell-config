@@ -161,7 +161,7 @@ def docs-op [
     --vault (-v): string    # which vault to find documents
     --tag (-t): string      # which tag must exist in documents
 ] {
-    op item list --vault $vault -- tags $tag --format json | from json | select title
+    op item list --vault $vault --tags $tag --format json | from json | select title
 }
 
 # util - extract relevant fields record from document in vault
