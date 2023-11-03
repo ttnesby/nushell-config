@@ -383,13 +383,13 @@ def token-az [
     --vault: string = Development
     --service_principal: string = az-cost
     --scope: string = 'https://management.azure.com/.default'
-    --grant_type: string = client_credentials        
+    --grant_type: string = client_credentials
 ] {
     ['tenant_id' 'client_id' 'client_secret']
-    | fields-op --vault $vault --title $service_principal --relevantFields $in 
-    | do {|sp| 
+    | fields-op --vault $vault --title $service_principal --relevantFields $in
+    | do {|sp|
         {
-            url: $'https://login.microsoftonline.com/($sp.tenant_id)/oauth2/v2.0/token' 
+            url: $'https://login.microsoftonline.com/($sp.tenant_id)/oauth2/v2.0/token'
             client_id: (op read $sp.client_id)
             client_secret: (op read $sp.client_secret)
             grant_type: $grant_type
@@ -397,15 +397,47 @@ def token-az [
         }
     } $in
     | http post --content-type application/x-www-form-urlencoded $in.url ($in | reject url | url build-query)
+    | $'($in.token_type) ($in.access_token)'
+}
+
+# util - wait for something (202), until completion (200) or another status code
+def cost-wait [
+    --headers: string
+    --max_retries: int = 10
+] {    
+    match $in {
+        {headers: $h ,body: _ ,status: 202} => {
+            use std repeat
+            { sleep 5sec; http get --allow-errors --full --headers $headers ($h.response | where name == location | (first).value) }
+            | repeat $max_retries
+            | each while {|it|
+                let r = (do $it)
+                if $r.status == 202 { null } else { $r }
+            }
+            | compact
+            | first
+        }
+        _ => { $in }
+    }
 }
 
 def cost-az [
-    --subscription: string = subscriptions/00922d07-438a-46ce-b7cc-7dc0e119d25a
-    --periode: record<start:string, end:string> = {start: '2023-10-01', end: '2023-10-31'} 
-    metric: string = ActualCost
+    --token(-t): string = 'Bearer '
+    --periode(-p): record<start:string, end:string> = {start: '2023-10-01', end: '2023-10-31'}
+    --metric(-m): string = ActualCost
 ] {
-    let headers = token-az | [Authorization $'($in.token_type) ($in.access_token)' ContentType application/json]
-    let url = $'https://management.azure.com/($subscription)/providers/Microsoft.CostManagement/generateDetailedCostReport?api-version=2023-08-01'
+    let subs = $in
+    let headers = [Authorization $'($token)' ContentType application/json]
 
-    http post --full --headers $headers $url ({timePeriod: $periode, metric: $metric} | to json)
+    $subs
+    | par-each {|s|
+        let url = $'https://management.azure.com/subscriptions/($s)/providers/Microsoft.CostManagement/generateDetailedCostReport?api-version=2023-08-01'
+
+        http post --allow-errors --full --headers $headers $url ({timePeriod: $periode, metric: $metric} | to json)
+        | cost-wait --headers $headers
+        | match $in {
+            {headers: $h ,body: $b ,status: 200} => { http get ($b.properties.downloadUrl) }
+            {headers: _ ,body: _ ,status:$sc} => { print $sc; return null}
+        }
+    }
 }
