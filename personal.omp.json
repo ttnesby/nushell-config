@@ -42,9 +42,9 @@
           "background": "#8800dd",
           "template": " <#fefefe></> {{ .FormattedMs }} ",
           "properties": {
-            "threshold": 50,
+            "threshold": 500,
             "style": "roundrock",
-            "always_enabled": true
+            "always_enabled": false
           }
         }
       ],
