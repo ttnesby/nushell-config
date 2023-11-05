@@ -220,6 +220,19 @@ def as-az [] {
     }
 }
 
+# az - az account show, get current subscription
+def ac-az [] {
+    az account list --only-show-errors --output json
+    | match $in {
+        [] => { '' }
+        $l => {
+            az account show --only-show-errors --output json
+            | from json
+            | get id
+        }
+    }
+}
+
 # az - az logout
 def o-az [] {
     az account list --output json --only-show-errors
@@ -379,7 +392,7 @@ def ip-status-az [
 }
 
 # az - get oauth token for a given service principal and scope
-def token-az [
+def token-sp-az [
     --vault: string = Development
     --service_principal: string = az-cost
     --scope: string = 'https://management.azure.com/.default'
@@ -400,44 +413,139 @@ def token-az [
     | $'($in.token_type) ($in.access_token)'
 }
 
+# az - get oauth token for current user, subscription and scope
+def token-az [
+    --scope: string = 'https://management.azure.com/.default'
+] {
+    az account get-access-token --scope $scope
+    | from json
+    | $'($in.tokenType) ($in.accessToken)'
+}
+
 # util - wait for something (202), until completion (200) or another status code
 def cost-wait [
     --headers: string
-    --max_retries: int = 10
-] {    
+] {
     match $in {
         {headers: $h ,body: _ ,status: 202} => {
-            use std repeat
-            { sleep 5sec; http get --allow-errors --full --headers $headers ($h.response | where name == location | (first).value) }
-            | repeat $max_retries
-            | each while {|it|
-                let r = (do $it)
-                if $r.status == 202 { null } else { $r }
+            let waitUrl = ($h.response | where name == location | get 0.value)
+            let retryAfter = ($h.response | where name == retry-after | get 0.value) | into int | into duration --unit sec
+
+            print $'estimated cost complection: ($retryAfter) - waiting'
+
+            mut r = $in
+            loop {
+                sleep $retryAfter
+                $r = (http get --allow-errors --full --headers $headers $waitUrl)
+                if $r.status != 202 { break }
             }
-            | compact
-            | first
+            $r
         }
         _ => { $in }
     }
 }
 
+# util - cost cache dir for download of cost CSV
+def costCacheDir [] {
+    let cacheDir = ('~/.azcost' | path expand)
+    if (not ($cacheDir | path exists)) {mkdir $cacheDir }
+    $cacheDir    
+}
+
+# util - cost cache file for download of cost CSV file 
+def costCacheFile [
+    --subscription(-s):string
+    --periode(-p):string
+] {
+    costCacheDir | path join $'($subscription)-($periode).csv'
+}
+
+# see https://learn.microsoft.com/en-us/rest/api/cost-management/generate-cost-details-report/create-operation?view=rest-cost-management-2023-08-01&tabs=HTTP
+
+# az - download the cost CSV for subscription(s) and given periode
+#
+# Example:
+# download cost for platform subscriptions connectivity, management, identity - for October
+# $> [575a53ac-e2a1-4215-b45f-028ec4f6f2a5, 7e260459-3026-4653-b259-0347c0bb5970, 9f66c67b-a3b2-45cb-97ec-dd5017e94d89] | cost-az --periode 202310
 def cost-az [
-    --token(-t): string = 'Bearer '
-    --periode(-p): record<start:string, end:string> = {start: '2023-10-01', end: '2023-10-31'}
+    --token(-t): string = ''            # see token-az | token-sp-az
+    --periode(-p): string = ''          # YYYYmm
     --metric(-m): string = ActualCost
 ] {
     let subs = $in
-    let headers = [Authorization $'($token)' ContentType application/json]
+
+    let tkn = if $token == '' {token-az} else {$token}
+
+    let currMonth = (date now | format date "%Y%m")
+    let prd = if $periode == '' {$currMonth} else {$periode}
+
+    let headers = [Authorization $'($tkn)' ContentType application/json]
 
     $subs
     | par-each {|s|
         let url = $'https://management.azure.com/subscriptions/($s)/providers/Microsoft.CostManagement/generateDetailedCostReport?api-version=2023-08-01'
+        let cacheFile = (costCacheFile -s $s -p $prd)
 
-        http post --allow-errors --full --headers $headers $url ({timePeriod: $periode, metric: $metric} | to json)
-        | cost-wait --headers $headers
-        | match $in {
-            {headers: $h ,body: $b ,status: 200} => { http get ($b.properties.downloadUrl) }
-            {headers: _ ,body: _ ,status:$sc} => { print $sc; return null}
+        if ($cacheFile | path exists) and ($prd < $currMonth) {
+            $cacheFile
+        } else {
+            http post --allow-errors --full --headers $headers $url ({billingPeriod: $prd, metric: $metric} | to json)
+            | cost-wait --headers $headers
+            | match $in {
+                {headers: $h ,body: $b ,status: 200} => {
+                    let csv = http get ($b.properties.downloadUrl)
+                    $csv | save --force $cacheFile
+                    $cacheFile
+                }
+                {headers: _ ,body: _ ,status:$sc} => { print $sc; return null}
+            }
         }
     }
+}
+
+# az - download platform cost CSVs (connectivity, management, identity) for current year and months before current month
+def platform-cost [] {
+
+    let platformSubs = [575a53ac-e2a1-4215-b45f-028ec4f6f2a5, 7e260459-3026-4653-b259-0347c0bb5970, 9f66c67b-a3b2-45cb-97ec-dd5017e94d89]
+    let n = date now | date to-record
+
+    1..($n.month - 1)
+    | each {|m| # not doing par-each due to rate limiting (429)
+        let p = ($'($n.year)-($m)-1' | into datetime | format date "%Y%m")        
+        $platformSubs 
+        | par-each {|s| if not ((costCacheFile -s $s -p $p) | path exists) {$s | cost-az --periode $p} }
+    }
+}
+
+# az - calculate the total monthly cost for cost CSV
+def sub-tot [] {
+    let csvs = $in
+
+    $csvs
+    | par-each {|csv|
+        $csv
+        | open --raw
+        | from csv
+        | {
+            name: ($in | (get 0).SubscriptionName)
+            id: ($in | (get 0).SubscriptionId)
+            periode: ($in | (get 0).BillingPeriodEndDate | into datetime | format date "%Y%m")
+            total: ($in | get CostInBillingCurrency | math sum | into string --decimals 2)
+        }
+    }
+}
+
+# az - platform trends, assuming platform-cost is completed first - ongoing
+def platform-trend [] {
+    let platformSubs = [575a53ac-e2a1-4215-b45f-028ec4f6f2a5, 7e260459-3026-4653-b259-0347c0bb5970, 9f66c67b-a3b2-45cb-97ec-dd5017e94d89]
+    let n = date now | date to-record
+
+    1..($n.month - 1)
+    | par-each {|m| 
+        let p = ($'($n.year)-($m)-1' | into datetime | format date "%Y%m")        
+        $platformSubs | cost-az --periode $p | sub-tot
+    }
+    | flatten    
+    | sort-by periode
+    | group-by name
 }
