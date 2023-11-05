@@ -449,10 +449,10 @@ def cost-wait [
 def costCacheDir [] {
     let cacheDir = ('~/.azcost' | path expand)
     if (not ($cacheDir | path exists)) {mkdir $cacheDir }
-    $cacheDir    
+    $cacheDir
 }
 
-# util - cost cache file for download of cost CSV file 
+# util - cost cache file for download of cost CSV file
 def costCacheFile [
     --subscription(-s):string
     --periode(-p):string
@@ -503,20 +503,6 @@ def cost-az [
     }
 }
 
-# az - download platform cost CSVs (connectivity, management, identity) for current year and months before current month
-def platform-cost [] {
-
-    let platformSubs = [575a53ac-e2a1-4215-b45f-028ec4f6f2a5, 7e260459-3026-4653-b259-0347c0bb5970, 9f66c67b-a3b2-45cb-97ec-dd5017e94d89]
-    let n = date now | date to-record
-
-    1..($n.month - 1)
-    | each {|m| # not doing par-each due to rate limiting (429)
-        let p = ($'($n.year)-($m)-1' | into datetime | format date "%Y%m")        
-        $platformSubs 
-        | par-each {|s| if not ((costCacheFile -s $s -p $p) | path exists) {$s | cost-az --periode $p} }
-    }
-}
-
 # az - calculate the total monthly cost for cost CSV
 def sub-tot [] {
     let csvs = $in
@@ -535,17 +521,94 @@ def sub-tot [] {
     }
 }
 
+def dfr-sub-tot [] {
+    let csvs = $in
+
+    $csvs
+    | par-each {|csv|
+        let csvDfr = dfr open $csv
+
+        $csvDfr
+        | dfr with-column ($csvDfr | dfr get BillingPeriodEndDate | dfr as-date "%m/%d/%Y") --name BillingPeriodEndDate
+        | dfr group-by SubscriptionName
+        | dfr agg [
+            (dfr col SubscriptionId | dfr first | dfr as Id)
+            (dfr col BillingPeriodEndDate | dfr first | dfr as Periode)
+            (dfr col CostInBillingCurrency | dfr sum | dfr as Sum)
+        ]
+    }
+}
+
+# az - download platform cost CSVs (connectivity, management, identity) for current year and months - 1
+def platform-cost [] {
+
+    let platformSubs = [575a53ac-e2a1-4215-b45f-028ec4f6f2a5, 7e260459-3026-4653-b259-0347c0bb5970, 9f66c67b-a3b2-45cb-97ec-dd5017e94d89]
+    let n = date now | date to-record
+
+    1..($n.month - 1)
+    | each {|m| # not doing par-each due to rate limiting (429)
+        let p = ($'($n.year)-($m)-1' | into datetime | format date "%Y%m")
+        $platformSubs
+        | par-each {|s| if not ((costCacheFile -s $s -p $p) | path exists) {$s | cost-az --periode $p} }
+    }
+}
+
 # az - platform trends, assuming platform-cost is completed first - ongoing
 def platform-trend [] {
     let platformSubs = [575a53ac-e2a1-4215-b45f-028ec4f6f2a5, 7e260459-3026-4653-b259-0347c0bb5970, 9f66c67b-a3b2-45cb-97ec-dd5017e94d89]
     let n = date now | date to-record
 
     1..($n.month - 1)
-    | par-each {|m| 
-        let p = ($'($n.year)-($m)-1' | into datetime | format date "%Y%m")        
+    | par-each {|m|
+        let p = ($'($n.year)-($m)-1' | into datetime | format date "%Y%m")
         $platformSubs | cost-az --periode $p | sub-tot
     }
-    | flatten    
+    | flatten
     | sort-by periode
     | group-by name
+}
+
+def platform-trend2 [] {
+    let platformSubs = [575a53ac-e2a1-4215-b45f-028ec4f6f2a5, 7e260459-3026-4653-b259-0347c0bb5970, 9f66c67b-a3b2-45cb-97ec-dd5017e94d89]
+    let n = date now | date to-record
+
+    let dFrames = 1..($n.month - 1)
+    | par-each {|m|
+        let p = ($'($n.year)-($m)-1' | into datetime | format date "%Y%m")
+        $platformSubs | cost-az --periode $p | par-each {|f| dfr open $f }
+    }
+    | flatten
+
+    let theFrame = $dFrames | skip 1 | reduce -f ($dFrames | first) {|df, acc| $df | dfr append $acc --col }
+
+    let monthlySum = $theFrame
+    | dfr with-column ($theFrame | dfr get BillingPeriodEndDate | dfr as-datetime "%m/%d/%Y" | dfr strftime '%Y%m') --name BillingYearMonth
+    | dfr group-by SubscriptionName BillingYearMonth
+    | dfr agg [
+        (dfr col SubscriptionId | dfr first)
+        (dfr col CostInBillingCurrency | dfr sum | dfr as Sum)
+    ]
+    | dfr sort-by SubscriptionName BillingYearMonth
+    | dfr collect
+
+    $monthlySum
+    | dfr filter ((dfr col SubscriptionId) == '575a53ac-e2a1-4215-b45f-028ec4f6f2a5')
+    | dfr agg [
+        ()
+    ]
+}
+
+def test [] {
+
+let costDfr = '575a53ac-e2a1-4215-b45f-028ec4f6f2a5' | cost-az --periode 202310 | dfr open $in
+
+$costDfr
+| dfr with-column ($costDfr | dfr get BillingPeriodEndDate | dfr as-date "%m/%d/%Y") --name BillingPeriodEndDate
+| dfr group-by SubscriptionName
+| dfr agg [
+    (dfr col SubscriptionId | dfr first)
+    (dfr col BillingPeriodEndDate | dfr first)
+    (dfr col CostInBillingCurrency | dfr sum | dfr as MonthSum)
+]
+
 }
