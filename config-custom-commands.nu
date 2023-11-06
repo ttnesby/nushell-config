@@ -503,24 +503,6 @@ def cost-az [
     }
 }
 
-# az - calculate the total monthly cost for cost CSV
-def sub-tot [] {
-    let csvs = $in
-
-    $csvs
-    | par-each {|csv|
-        $csv
-        | open --raw
-        | from csv
-        | {
-            name: ($in | (get 0).SubscriptionName)
-            id: ($in | (get 0).SubscriptionId)
-            periode: ($in | (get 0).BillingPeriodEndDate | into datetime | format date "%Y%m")
-            total: ($in | get CostInBillingCurrency | math sum | into string --decimals 2)
-        }
-    }
-}
-
 # az - download platform cost CSVs (connectivity, management, identity) for current year and months - 1
 def platform-cost [] {
 
@@ -530,31 +512,15 @@ def platform-cost [] {
     1..($n.month - 1)
     | each {|m| # not doing par-each due to rate limiting (429)
         let p = ($'($n.year)-($m)-1' | into datetime | format date "%Y%m")
-        $platformSubs
-        | par-each {|s| if not ((costCacheFile -s $s -p $p) | path exists) {$s | cost-az --periode $p} }
+        $platformSubs | par-each {|s| if not ((costCacheFile -s $s -p $p) | path exists) {$s | cost-az --periode $p} }
     }
 }
 
-# az - platform trends, assuming platform-cost is completed first - ongoing
 def platform-trend [] {
     let platformSubs = [575a53ac-e2a1-4215-b45f-028ec4f6f2a5, 7e260459-3026-4653-b259-0347c0bb5970, 9f66c67b-a3b2-45cb-97ec-dd5017e94d89]
     let n = date now | date to-record
 
-    1..($n.month - 1)
-    | par-each {|m|
-        let p = ($'($n.year)-($m)-1' | into datetime | format date "%Y%m")
-        $platformSubs | cost-az --periode $p | sub-tot
-    }
-    | flatten
-    | sort-by periode
-    | group-by name
-}
-
-# az - platform trends, assuming platform-cost is completed first - ongoing
-def platform-trend2 [] {
-    let platformSubs = [575a53ac-e2a1-4215-b45f-028ec4f6f2a5, 7e260459-3026-4653-b259-0347c0bb5970, 9f66c67b-a3b2-45cb-97ec-dd5017e94d89]
-    let n = date now | date to-record
-
+    # get data frames for all subscriptions and months until current month
     let dFrames = 1..($n.month - 1)
     | par-each {|m|
         let p = ($'($n.year)-($m)-1' | into datetime | format date "%Y%m")
@@ -562,46 +528,10 @@ def platform-trend2 [] {
     }
     | flatten
 
+    # reduce all data frames into a single frame
     let theFrame = $dFrames | skip 1 | reduce -f ($dFrames | first) {|df, acc| $df | dfr append $acc --col }
 
-    let monthlySum = $theFrame
-    | dfr with-column ($theFrame | dfr get BillingPeriodEndDate | dfr as-datetime "%m/%d/%Y" | dfr strftime '%Y%m') --name BillingYearMonth
-    | dfr group-by SubscriptionName BillingYearMonth
-    | dfr agg [
-        (dfr col SubscriptionId | dfr first)
-        (dfr col CostInBillingCurrency | dfr sum | dfr as Sum)
-    ]
-    | dfr sort-by SubscriptionName BillingYearMonth
-    | dfr collect
-    print $monthlySum
-
-    $monthlySum
-    | dfr with-column ($monthlySum | dfr get BillingYearMonth | dfr as-datetime "%Y%m" | dfr strftime '%Y') --name BillingYear
-    | dfr group-by SubscriptionName BillingYear
-    | dfr agg [
-        (dfr col Sum | dfr min | dfr as Min)
-        (dfr col Sum | dfr max | dfr as Max)
-        (dfr col Sum | dfr mean | dfr as Mean)
-        (dfr col Sum | dfr std | dfr as Std)
-        (dfr col Sum | dfr sum)
-    ]
-    | dfr sort-by SubscriptionName
-
-}
-
-def platform-trend3 [] {
-    let platformSubs = [575a53ac-e2a1-4215-b45f-028ec4f6f2a5, 7e260459-3026-4653-b259-0347c0bb5970, 9f66c67b-a3b2-45cb-97ec-dd5017e94d89]
-    let n = date now | date to-record
-
-    let dFrames = 1..($n.month - 1)
-    | par-each {|m|
-        let p = ($'($n.year)-($m)-1' | into datetime | format date "%Y%m")
-        $platformSubs | cost-az --periode $p | par-each {|f| dfr open $f }
-    }
-    | flatten
-
-    let theFrame = $dFrames | skip 1 | reduce -f ($dFrames | first) {|df, acc| $df | dfr append $acc --col }
-
+    # do some basic calculation (min, max, mean, std, sum) for platform subscriptions
     $theFrame
     | dfr with-column ($theFrame | dfr get BillingPeriodEndDate | dfr as-datetime "%m/%d/%Y" | dfr strftime '%m') --name BillingMonth
     | dfr with-column ($theFrame | dfr get BillingPeriodEndDate | dfr as-datetime "%m/%d/%Y" | dfr strftime '%Y') --name BillingYear
@@ -613,11 +543,11 @@ def platform-trend3 [] {
     | dfr sort-by SubscriptionName BillingMonth
     | dfr group-by SubscriptionName BillingYear
     | dfr agg [
-        (dfr col Sum | dfr min | dfr as Min)
-        (dfr col Sum | dfr max | dfr as Max)
-        (dfr col Sum | dfr mean | dfr as Mean)
-        (dfr col Sum | dfr std | dfr as Std)
-        (dfr col Sum | dfr sum)
+        (dfr col Sum | dfr min | dfr as MonthlyMin)
+        (dfr col Sum | dfr max | dfr as MonthlyMax)
+        (dfr col Sum | dfr mean | dfr as MonthlyMean)
+        (dfr col Sum | dfr std | dfr as MonthlyStd)
+        (dfr col Sum | dfr sum | dfr as SumYear)
     ]
     | dfr sort-by SubscriptionName
 }
