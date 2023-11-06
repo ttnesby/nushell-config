@@ -124,7 +124,6 @@ def cidr [] {
         let lastHostBits = ('1' | repeat (32 - $subnetSize - 1) | str join) + '0'
 
         {
-            cidr: (($ipAsSubnetSizeBits  + $noHostsBits |  bits32ToIPv4) + $'/($subnetSize)')
             subnetMask: ($networkBits + $noHostsBits | bits32ToIPv4)
             networkAddress: ($ipAsSubnetSizeBits  + $noHostsBits |  bits32ToIPv4)
             broadcastAddress: ($ipAsSubnetSizeBits + $bCastHostsBits |  bits32ToIPv4)
@@ -148,9 +147,10 @@ def intRangeToCIDRDetails [
 
     if $free == 0 { return }
 
-    let cidr = ($ref1 | into bits | split row (char space) | reverse | str join | bits32ToIPv4) + $'/(32 - ($free | math log 2 | math floor))' | cidr | first
-        
-    {subscription: $text, vnetName: $text} | merge $cidr  | merge {range: $range}
+    let cidr = ($ref1 | into bits | split row (char space) | reverse | str join | bits32ToIPv4) + $'/(32 - ($free | math log 2 | math floor))'
+    let details = $cidr | cidr | first
+
+    {subscription: $text, vnetName: $text, cidr: $cidr} | merge $details  | merge {range: $range}
 }
 
 
@@ -161,10 +161,7 @@ def docs-op [
     --vault (-v): string    # which vault to find documents
     --tag (-t): string      # which tag must exist in documents
 ] {
-    op item list --vault $vault --format json
-    | from json
-    | where {|d| try { $d | get tags | $tag in $in } catch { false } }
-    | select title
+    op item list --vault $vault --tags $tag --format json | from json | select title
 }
 
 # util - extract relevant fields record from document in vault
@@ -223,6 +220,19 @@ def as-az [] {
     }
 }
 
+# az - az account show, get current subscription
+def ac-az [] {
+    az account list --only-show-errors --output json
+    | match $in {
+        [] => { '' }
+        $l => {
+            az account show --only-show-errors --output json
+            | from json
+            | get id
+        }
+    }
+}
+
 # az - az logout
 def o-az [] {
     az account list --output json --only-show-errors
@@ -271,20 +281,20 @@ def i-srv-az [
 }
 
 # az - get azure navno master ip ranges
-def ip-az [] {
+def ip-range-az [] {
     op item get IP-Ranges --vault Development --format json
     | from json
     | get fields
     | where label != notesPlain
     | select label value
-    | par-each {|r| {name: $r.label } | merge ($r.value | cidr | first) }
+    | par-each {|r| {name: $r.label, cidr: $r.value } | merge ($r.value | cidr | first) }
     | sort-by end name
 }
 
 # util - calculate cidr details and relate to 'known' IP ranges
 def vnet-details [] {
     let cidrs = $in
-    let ranges = ip-az
+    let ranges = ip-range-az
 
     $cidrs
     | par-each {|r|
@@ -297,7 +307,7 @@ def vnet-details [] {
                 $l => { $'error - ($l | reduce -f '' {|r,acc| $acc + (char pipe) + $r.name} )'}
             }
 
-        $r | reject cidr | merge $details | merge {range: $inRange}
+        $r | merge $details | merge {range: $inRange}
     }
     | sort-by -i end subscription vnetName
 }
@@ -325,31 +335,219 @@ def vnet-az [
     | if $details { $in | vnet-details } else { $in }
 }
 
+def dfr-vnet-az [] {
+    let subs = az account management-group entities list
+    | from json
+    | dfr into-lazy
+    | dfr filter-with ((dfr col type) == /subscriptions)
+    | dfr select displayName name
+
+    $subs
+    | dfr collect
+    | dfr into-nu
+    | par-each {|s|
+        az network vnet list --subscription $s.name | from json
+        | each {|vnet|
+            {
+                subscription: $s.displayName
+                vnet: $vnet.name
+                enableDdosProtection: $vnet.enableDdosProtection,
+                dhcpOptions: (try { $vnet.dhcpOptions.dnsServers } catch {[]})
+                virtualNetworkPeerings: ($vnet.virtualNetworkPeerings | each {|p| $p.id | path basename })
+                cidr: $vnet.addressSpace.addressPrefixes
+            }
+        }
+    }
+    | flatten
+    | dfr into-lazy
+}
+
 # az - status of master ip ranges, used - and available free sub ranges
 #
 # NB the last free network is invalid, just a temporary marker before fix
 def ip-status-az [
-    --only_gaps
+    --only_available
 ] {
-    let ipRanges = ip-az
+    let ipRanges = ip-range-az
     let cidrDetails = vnet-az --details | group-by range | sort
 
     $cidrDetails
     | reject unknown
     | items {|k,v|
         let r = $ipRanges | where name == $k | first
-        
-        $v 
-        | select start end 
+
+        $v
+        | select start end
         # see (NB) below, the exceptions are start and end for the ip range itself
         | prepend {start: $r.start, end: ($r.start - 1)}    # prepend the ip range itself, only the start value
         | append {start: $r.end, end: $r.end}               # append the ip range itself, only the end value
         | sort-by end                                       # sort by end value
         | window 2                                          # pair-wise iteration of all start-end
-        # NB - adding 1 to 0.end due to 1 in diff. between subnets, 
+        # NB - adding 1 to 0.end due to 1 in diff. between subnets,
         | where $it.0.end + 1 < $it.1.start                 # only gaps are relevant
         | each {|p| intRangeToCIDRDetails --ref1 ($p.0.end + 1)  --ref2 $p.1.start --range $k}
-        | if $only_gaps { $in } else { $in | append $v | sort-by end}
+        | if $only_available { $in } else { $in | append $v | sort-by end}
     }
     | flatten | sort-by end | group-by range | sort
+}
+
+# az - get oauth token for a given service principal and scope
+def token-sp-az [
+    --vault: string = Development
+    --service_principal: string = az-cost
+    --scope: string = 'https://management.azure.com/.default'
+    --grant_type: string = client_credentials
+] {
+    ['tenant_id' 'client_id' 'client_secret']
+    | fields-op --vault $vault --title $service_principal --relevantFields $in
+    | do {|sp|
+        {
+            url: $'https://login.microsoftonline.com/($sp.tenant_id)/oauth2/v2.0/token'
+            client_id: (op read $sp.client_id)
+            client_secret: (op read $sp.client_secret)
+            grant_type: $grant_type
+            scope: $scope
+        }
+    } $in
+    | http post --content-type application/x-www-form-urlencoded $in.url ($in | reject url | url build-query)
+    | $'($in.token_type) ($in.access_token)'
+}
+
+# az - get oauth token for current user, subscription and scope
+def token-az [
+    --scope: string = 'https://management.azure.com/.default'
+] {
+    az account get-access-token --scope $scope
+    | from json
+    | $'($in.tokenType) ($in.accessToken)'
+}
+
+# util - wait for something (202), until completion (200) or another status code
+def cost-wait [
+    --headers: string
+] {
+    match $in {
+        {headers: $h ,body: _ ,status: 202} => {
+            let waitUrl = ($h.response | where name == location | get 0.value)
+            let retryAfter = ($h.response | where name == retry-after | get 0.value) | into int | into duration --unit sec
+
+            print $'estimated cost complection: ($retryAfter) - waiting'
+
+            mut r = $in
+            loop {
+                sleep $retryAfter
+                $r = (http get --allow-errors --full --headers $headers $waitUrl)
+                if $r.status != 202 { break }
+            }
+            $r
+        }
+        _ => { $in }
+    }
+}
+
+# util - cost cache dir for download of cost CSV
+def costCacheDir [] {
+    let cacheDir = ('~/.azcost' | path expand)
+    if (not ($cacheDir | path exists)) {mkdir $cacheDir }
+    $cacheDir
+}
+
+# util - cost cache file for download of cost CSV file
+def costCacheFile [
+    --subscription(-s):string
+    --periode(-p):string
+] {
+    costCacheDir | path join $'($subscription)-($periode).csv'
+}
+
+# see https://learn.microsoft.com/en-us/rest/api/cost-management/generate-cost-details-report/create-operation?view=rest-cost-management-2023-08-01&tabs=HTTP
+
+# az - download the cost CSV for subscription(s) and given periode
+#
+# Example:
+# download cost for platform subscriptions connectivity, management, identity - for October
+# $> [575a53ac-e2a1-4215-b45f-028ec4f6f2a5, 7e260459-3026-4653-b259-0347c0bb5970, 9f66c67b-a3b2-45cb-97ec-dd5017e94d89] | cost-az --periode 202310
+def cost-az [
+    --token(-t): string = ''            # see token-az | token-sp-az
+    --periode(-p): string = ''          # YYYYmm
+    --metric(-m): string = ActualCost
+] {
+    let subs = $in
+
+    let tkn = if $token == '' {token-az} else {$token}
+
+    let currMonth = (date now | format date "%Y%m")
+    let prd = if $periode == '' {$currMonth} else {$periode}
+
+    let headers = [Authorization $'($tkn)' ContentType application/json]
+
+    $subs
+    | par-each {|s|
+        let url = $'https://management.azure.com/subscriptions/($s)/providers/Microsoft.CostManagement/generateDetailedCostReport?api-version=2023-08-01'
+        let cacheFile = (costCacheFile -s $s -p $prd)
+
+        if ($cacheFile | path exists) and ($prd < $currMonth) {
+            $cacheFile
+        } else {
+            http post --allow-errors --full --headers $headers $url ({billingPeriod: $prd, metric: $metric} | to json)
+            | cost-wait --headers $headers
+            | match $in {
+                {headers: $h ,body: $b ,status: 200} => {
+                    let csv = http get ($b.properties.downloadUrl)
+                    $csv | save --force $cacheFile
+                    $cacheFile
+                }
+                {headers: _ ,body: _ ,status:$sc} => { print $sc; return null}
+            }
+        }
+    }
+}
+
+# az - download platform cost CSVs (connectivity, management, identity) for current year and months - 1
+def platform-cost [] {
+
+    let platformSubs = [575a53ac-e2a1-4215-b45f-028ec4f6f2a5, 7e260459-3026-4653-b259-0347c0bb5970, 9f66c67b-a3b2-45cb-97ec-dd5017e94d89]
+    let n = date now | date to-record
+
+    1..($n.month - 1)
+    | each {|m| # not doing par-each due to rate limiting (429)
+        let p = ($'($n.year)-($m)-1' | into datetime | format date "%Y%m")
+        $platformSubs | par-each {|s| if not ((costCacheFile -s $s -p $p) | path exists) {$s | cost-az --periode $p} }
+    }
+}
+
+def platform-trend [] {
+    let platformSubs = [575a53ac-e2a1-4215-b45f-028ec4f6f2a5, 7e260459-3026-4653-b259-0347c0bb5970, 9f66c67b-a3b2-45cb-97ec-dd5017e94d89]
+    let n = date now | date to-record
+
+    # get data frames for all subscriptions and months until current month
+    let dFrames = 1..($n.month - 1)
+    | par-each {|m|
+        let p = ($'($n.year)-($m)-1' | into datetime | format date "%Y%m")
+        $platformSubs | cost-az --periode $p | par-each {|f| dfr open $f }
+    }
+    | flatten
+
+    # reduce all data frames into a single frame
+    let theFrame = $dFrames | skip 1 | reduce -f ($dFrames | first) {|df, acc| $df | dfr append $acc --col }
+
+    # do some basic calculation (min, max, mean, std, sum) for platform subscriptions
+    $theFrame
+    | dfr with-column ($theFrame | dfr get BillingPeriodEndDate | dfr as-datetime "%m/%d/%Y" | dfr strftime '%m') --name BillingMonth
+    | dfr with-column ($theFrame | dfr get BillingPeriodEndDate | dfr as-datetime "%m/%d/%Y" | dfr strftime '%Y') --name BillingYear
+    | dfr group-by SubscriptionName BillingYear BillingMonth
+    | dfr agg [
+        (dfr col SubscriptionId | dfr first)
+        (dfr col CostInBillingCurrency | dfr sum | dfr as Sum)
+    ]
+    | dfr sort-by SubscriptionName BillingMonth
+    | dfr group-by SubscriptionName BillingYear
+    | dfr agg [
+        (dfr col Sum | dfr min | dfr as MonthlyMin)
+        (dfr col Sum | dfr max | dfr as MonthlyMax)
+        (dfr col Sum | dfr mean | dfr as MonthlyMean)
+        (dfr col Sum | dfr std | dfr as MonthlyStd)
+        (dfr col Sum | dfr sum | dfr as SumYear)
+    ]
+    | dfr sort-by SubscriptionName
 }
