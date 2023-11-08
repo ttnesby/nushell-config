@@ -70,6 +70,14 @@
           "style": "powerline",
           "template": " \uebd8 Subscription {{ .Name }} - {{ .User.Type }}: {{ .User.Name }}",
           "type": "az"
+        },
+        {
+          "background": "#47888d",
+          "foreground": "#ffffff",
+          "powerline_symbol": "\ue0b0",
+          "style": "powerline",
+          "template": "  {{.Region}} {{.Project}} :: {{.Account}} ",
+          "type": "gcp"
         }
       ],
       "type": "prompt"
