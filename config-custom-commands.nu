@@ -551,3 +551,21 @@ def platform-trend [] {
     ]
     | dfr sort-by SubscriptionName
 }
+
+### gcp ################################################################################
+
+def i-gc [
+] {
+    o-gc
+    do {gcloud auth login --quiet --format=json} | complete | null
+}
+
+# az - gcloud auth revoke
+def o-gc [] {
+    gcloud auth list --format=json
+    | from json
+    | match $in {
+        [] => { null }
+        _ => { do { gcloud auth revoke --format=json } | complete | null }
+    }
+}
