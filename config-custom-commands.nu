@@ -1,5 +1,26 @@
 ### gen ################################################################################
 
+# due to fzf-sel custom command and consistency
+$env.config.table.mode = 'light'
+$env.config.footer_mode = 'never'  
+
+# gen - fzf selection
+def fzf-sel [
+    query: string = '' # inital search
+] {    
+    let cache = $in # NB! Assuming a table due to index, whatever record type
+    # do fzf selection with intial search and return if only 1 found, returning null or the selected record 
+    ($cache | fzf --ansi --header-lines=2 --header-first --query $query --select-1 | lines)
+    | match $in {
+        [] => { return null } 
+        _ => {
+            # key point, only get the index from the selected string
+            let index = ($in | first | str trim | split row (char space) | first | into int)
+            $cache | get $index 
+        }
+    }
+}
+
 # gen - custom commands overview
 def cco [] {
     let withType = {|data| $data | select name | merge ($data | get usage | split column ' - ' type usage)}
@@ -54,20 +75,42 @@ def git-repos [
 ] {
     # https://www.nushell.sh/book/loading_data.html#nuon
     let master = '~/.gitrepos.nuon'
-    let gitRepos = { glob /**/.git --depth 6 --no-file | path dirname | wrap git-repos }
+    let gitRepos = { glob /**/.git --depth 6 --no-file | path dirname | wrap git-repo }
 
     if $update or (not ($master | path exists)) {
         do $gitRepos | save --force $master
     }
 
-    $master | open | get git-repos
+    $master | open 
 }
 
 # cd - to git repo
-def-env gd [] { git-repos | input list -f 'search:' | cd $in }
+def-env gd [
+    query: string = ''
+] { 
+    git-repos | fzf-sel $query | if $in != null {cd $in.git-repo} 
+}
 
 # cd - to terraform solution within a repo
-def-env td [] { glob **/*.tf --depth 7 --not [**/modules/**] | path dirname | uniq | input list -f 'search:' | cd $in }
+def-env td [
+    query: string = ''
+] { glob **/*.tf --depth 10 | path dirname | uniq | wrap 'terraform-folder' | fzf-sel $query | if $in != null {cd $in.terraform-folder} }
+
+# cd - to repo root from arbitrary sub folder
+def-env rr [] {
+    use std repeat
+
+    pwd 
+    | path relative-to ('~' | path expand) 
+    | path split 
+    | reverse 
+    | enumerate 
+    | each {|it| {index: $it.index, rr: (('.' | repeat ($it.index + 1) | str join) | path join '.git' | path exists)} }
+    | where $it.rr 
+    | get 0.index
+    | do {|idx: int| '.' | repeat ($idx + 1) | str join } $in
+    | cd $in
+}
 
 
 ### git ###############################################################################
