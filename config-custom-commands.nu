@@ -262,7 +262,7 @@ def as-az [
     | fzf-sel $query
     | match $in {
         null => { null }
-        $r => { az account set --subscription $r.id }
+        {name: _, id: $id} => { az account set --subscription $id }
     }
 }
 
