@@ -250,17 +250,19 @@ def-env env-op [
 def sub-name-id [] { $in | from json | select name id | sort-by name }
 
 # az - az account set with selected subscription
-def as-az [] {
+def as-az [
+    query: string = ''
+] {
     az account list --only-show-errors --output json
     | sub-name-id
     | match $in {
         [] => { i-az --subList | sub-name-id }
         $l => {$l}
     }
-    | input list -f 'search:'
+    | fzf-sel $query
     | match $in {
-        '' => {}
-        $l => { az account set --subscription ($l).id }
+        null => { null }
+        $r => { az account set --subscription $r.id }
     }
 }
 
