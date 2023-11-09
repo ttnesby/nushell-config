@@ -106,10 +106,11 @@ def-env rr [] {
     | reverse 
     | enumerate 
     | each {|it| {index: $it.index, rr: (('.' | repeat ($it.index + 1) | str join) | path join '.git' | path exists)} }
-    | where $it.rr 
-    | get 0.index
-    | do {|idx: int| '.' | repeat ($idx + 1) | str join } $in
-    | cd $in
+    | where $it.rr
+    | match $in {
+        [] => { return null }
+        $l => { $l | get 0.index | do {|idx: int| '.' | repeat ($idx + 1) | str join } $in | cd $in }
+    } 
 }
 
 
