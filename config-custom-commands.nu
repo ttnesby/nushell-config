@@ -30,9 +30,6 @@ def cco [] {
     do $withType $cmd | append (do $withType $ali) | group-by type | sort
 }
 
-# gen - clear
-alias cls = clear
-
 # gen - dir content as grid, used in pwd hook
 def lsg [] = { ls -as | sort-by type name -i | grid -c }
 
