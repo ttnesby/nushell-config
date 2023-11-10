@@ -2,21 +2,21 @@
 
 # due to fzf-sel custom command and consistency
 $env.config.table.mode = 'light'
-$env.config.footer_mode = 'never'  
+$env.config.footer_mode = 'never'
 
 # gen - fzf selection
 def fzf-sel [
     query: string = '' # inital search
-] {    
+] {
     let cache = $in # NB! Assuming a table due to index, whatever record type
-    # do fzf selection with intial search and return if only 1 found, returning null or the selected record 
+    # do fzf selection with intial search and return if only 1 found, returning null or the selected record
     ($cache | fzf --ansi --header-lines=2 --header-first --query $query --select-1 | lines)
     | match $in {
-        [] => { return null } 
+        [] => { return null }
         _ => {
             # key point, only get the index from the selected string
             let index = ($in | first | str trim | split row (char space) | first | into int)
-            $cache | get $index 
+            $cache | get $index
         }
     }
 }
@@ -81,36 +81,42 @@ def git-repos [
         do $gitRepos | save --force $master
     }
 
-    $master | open 
+    $master | open
 }
-
-# cd - to git repo
-def-env gd [
-    query: string = ''
-] { 
-    git-repos | fzf-sel $query | if $in != null {cd $in.git-repo} 
-}
-
-# cd - to terraform solution within a repo
-def-env td [
-    query: string = ''
-] { glob **/*.tf --depth 10 | path dirname | uniq | wrap 'terraform-folder' | fzf-sel $query | if $in != null {cd $in.terraform-folder} }
 
 # cd - to repo root from arbitrary sub folder
 def-env rr [] {
     use std repeat
 
-    pwd 
-    | path relative-to ('~' | path expand) 
-    | path split 
-    | reverse 
-    | enumerate 
-    | each {|it| {index: $it.index, rr: (('.' | repeat ($it.index + 1) | str join) | path join '.git' | path exists)} }
-    | where $it.rr
+    pwd                                         # current path
+    | path relative-to ('~' | path expand)      # the path `below` home
+    | path split                                # into a list
+    | reverse                                   # reversed, current folder (deepest) is 1st elem
+    | enumerate                                 # introduce index
+    | each {|it|                                # check if dot-git exists somewhere upwards to home
+        let dots = ('.' | repeat ($it.index + 1) | str join)
+        {dots: $dots, rr: ($dots | path join '.git' | path exists)}
+    }
+    | where $it.rr                              # filter rr and eventually do cd with enough dots
     | match $in {
         [] => { return null }
-        $l => { $l | get 0.index | do {|idx: int| '.' | repeat ($idx + 1) | str join } $in | cd $in }
-    } 
+        $l => { $l | get 0.dots | cd $in }
+    }
+}
+
+# cd - to git repo
+def-env gd [
+    query: string = ''
+] {
+    git-repos | fzf-sel $query | if $in != null {cd $in.git-repo}
+}
+
+# cd - to terraform solution within a repo
+def-env td [
+    query: string = ''
+] { 
+    rr # as starting point for the glob
+    glob **/*.tf --depth 10 | path dirname | uniq | wrap 'terraform-folder' | fzf-sel $query | if $in != null {cd $in.terraform-folder} 
 }
 
 
