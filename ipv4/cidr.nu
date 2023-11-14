@@ -1,4 +1,4 @@
-# ipv4 cidr - info return classic details for a cidr
+# module cidr - return classic details
 #
 # single cidr
 # $> '110.40.240.16/22' | ipv4 cidr info

@@ -9,7 +9,7 @@ def err [
 # module ipv4 - convert string of 32 bits to ipv4
 export def 'from bits' [] {
   let bits = ($in | split chars)
-  let span = (metadata $bits).span;
+  let span = (metadata $bits).span
 
   match ($bits) {
     $l if ($l | length) != 32 => {err -s $span -m 'invalid string' -t $'incorrect length ($l | length), should be 32' } 

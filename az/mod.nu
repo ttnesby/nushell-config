@@ -1,4 +1,4 @@
-# mod az - logout
+# module az - logout
 export def out [] {
     az account list --output json --only-show-errors
     | from json
@@ -8,7 +8,7 @@ export def out [] {
     }
 }
 
-# mod az - login via browser
+# module az - login via browser
 export def in [
     --scope (-s): string = 'https://graph.microsoft.com/.default'
     --subList
