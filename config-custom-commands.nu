@@ -133,7 +133,7 @@ def gbd [branch: string = main] {
 ### ipv4 ################################################################################
 
 # util - generate IPV4 string from 32 bits
-def bits32ToIPv4 [] {
+def bits32ToIPv4 [] string -> string {
     let bits = $in
 
     [0..8, 8..16, 16..24, 24..32]
