@@ -1,3 +1,5 @@
+use std repeat
+
 # module from - convert string of 32 bits to ipv4
 export def bits [] {
   let bits = ($in | split chars)
@@ -14,3 +16,28 @@ export def bits [] {
   | str join '.'
 }
 
+# module from - convert int to ipv4
+export def int [] {
+  let theInt  = $in
+  let span = (metadata $theInt).span
+
+  if ($theInt < 0 or $theInt > 4294967295) {
+    err -s $span -m 'invalid int' -t $'($theInt) must be in range [0, 4294967295]'
+  }
+
+  $theInt 
+  | into bits
+  | split row (char space)
+  | reverse
+  | str join
+  | match $in {
+    $s if ($s | str length) < 32 => {      
+      ('0' | repeat (32 - ($s | str length)) | str join) + $s
+    }
+    $s if ($s | str length) > 32 => {
+      $s | str reverse | str substring 0..32
+    }
+    _ => $in
+  }
+  | bits
+}

@@ -132,56 +132,56 @@ def gbd [branch: string = main] {
 
 ### ipv4 ################################################################################
 
-# util - generate IPV4 string from 32 bits
-def bits32ToIPv4 [] string -> string {
-    let bits = $in
+# # util - generate IPV4 string from 32 bits
+# def bits32ToIPv4 [] string -> string {
+#     let bits = $in
 
-    [0..8, 8..16, 16..24, 24..32]
-    | each {|r| $bits | str substring $r | into int -r 2 | into string }
-    | str join '.'
-}
+#     [0..8, 8..16, 16..24, 24..32]
+#     | each {|r| $bits | str substring $r | into int -r 2 | into string }
+#     | str join '.'
+# }
 
-# ipv4 - extract details from cidr
-#
-# single cidr:   '110.40.240.16/22' | cidr
-# multiple cidr: [110.40.240.16/22 14.12.72.8/17 10.98.1.64/28] | cidr
-def cidr [] {
-    let input = $in
+# # ipv4 - extract details from cidr
+# #
+# # single cidr:   '110.40.240.16/22' | cidr
+# # multiple cidr: [110.40.240.16/22 14.12.72.8/17 10.98.1.64/28] | cidr
+# def cidr [] {
+#     let input = $in
 
-    use std repeat
-    # https://www.ipconvertertools.com/convert-cidr-manually-binary
+#     use std repeat
+#     # https://www.ipconvertertools.com/convert-cidr-manually-binary
 
-    let bits32ToInt = {|bits| $bits | into int -r 2 }
+#     let bits32ToInt = {|bits| $bits | into int -r 2 }
 
-    $input
-    | parse '{a}.{b}.{c}.{d}/{subnet}'
-    | par-each {|rec|
-        let subnetSize = $rec.subnet | into int
-        let ipAsSubnetSizeBits = $rec
-            | values
-            | drop
-            | each {|s| $s | into int | into bits | str substring 0..8}
-            | str join
-            | str substring 0..$subnetSize
+#     $input
+#     | parse '{a}.{b}.{c}.{d}/{subnet}'
+#     | par-each {|rec|
+#         let subnetSize = $rec.subnet | into int
+#         let ipAsSubnetSizeBits = $rec
+#             | values
+#             | drop
+#             | each {|s| $s | into int | into bits | str substring 0..8}
+#             | str join
+#             | str substring 0..$subnetSize
 
-        let networkBits = '1' | repeat $subnetSize | str join
-        let noHostsBits = '0' | repeat (32 - $subnetSize) | str join
-        let bCastHostsBits = '1' | repeat (32 - $subnetSize) | str join
-        let firstHostBits = ('0' | repeat (32 - $subnetSize - 1) | str join) + '1'
-        let lastHostBits = ('1' | repeat (32 - $subnetSize - 1) | str join) + '0'
+#         let networkBits = '1' | repeat $subnetSize | str join
+#         let noHostsBits = '0' | repeat (32 - $subnetSize) | str join
+#         let bCastHostsBits = '1' | repeat (32 - $subnetSize) | str join
+#         let firstHostBits = ('0' | repeat (32 - $subnetSize - 1) | str join) + '1'
+#         let lastHostBits = ('1' | repeat (32 - $subnetSize - 1) | str join) + '0'
 
-        {
-            subnetMask: ($networkBits + $noHostsBits | bits32ToIPv4)
-            networkAddress: ($ipAsSubnetSizeBits  + $noHostsBits |  bits32ToIPv4)
-            broadcastAddress: ($ipAsSubnetSizeBits + $bCastHostsBits |  bits32ToIPv4)
-            firstIP: ($ipAsSubnetSizeBits + $firstHostBits |  bits32ToIPv4)
-            lastIP: ($ipAsSubnetSizeBits + $lastHostBits |  bits32ToIPv4)
-            noOfHosts: (2 ** (32 - $subnetSize) - 2)
-            start: ($ipAsSubnetSizeBits  + $noHostsBits |  do $bits32ToInt $in)
-            end: ($ipAsSubnetSizeBits + $bCastHostsBits |  do $bits32ToInt $in)
-        }
-    }
-}
+#         {
+#             subnetMask: ($networkBits + $noHostsBits | bits32ToIPv4)
+#             networkAddress: ($ipAsSubnetSizeBits  + $noHostsBits |  bits32ToIPv4)
+#             broadcastAddress: ($ipAsSubnetSizeBits + $bCastHostsBits |  bits32ToIPv4)
+#             firstIP: ($ipAsSubnetSizeBits + $firstHostBits |  bits32ToIPv4)
+#             lastIP: ($ipAsSubnetSizeBits + $lastHostBits |  bits32ToIPv4)
+#             noOfHosts: (2 ** (32 - $subnetSize) - 2)
+#             start: ($ipAsSubnetSizeBits  + $noHostsBits |  do $bits32ToInt $in)
+#             end: ($ipAsSubnetSizeBits + $bCastHostsBits |  do $bits32ToInt $in)
+#         }
+#     }
+# }
 
 # util - generate CIDR details from int range, with additional sub/vnet/range context
 def intRangeToCIDRDetails [
