@@ -1,24 +1,24 @@
-# module az - logout
-export def out [] {
-    az account list --output json --only-show-errors
-    | from json
-    | match $in {
-        [] => { null }
-        _ => { az logout }
-    }
-}
 
-# module az - login via browser
-export def in [
-    --scope (-s): string = 'https://graph.microsoft.com/.default'
-    --subList
+
+# util - raw subscription list to names and id's
+def sub-name-id [] { $in | from json | select name id | sort-by name }
+
+# module az - set subscription from list
+def sub [
+    query: string = ''  # initial fuzzy search
 ] {
-    let login = { az login --scope $scope --only-show-errors --output json }
-
-    out
-    if $subList {
-        do $login
-    } else {
-        do $login | from json | print $"Available subscriptions: ($in | length)"
+    az account list --only-show-errors --output json
+    | sub-name-id
+    | match $in {
+        [] => { login --subList | sub-name-id }
+        $l => {$l}
+    }
+    | fzf-sel $query
+    | match $in {
+        null => { null }
+        {name: _, id: $id} => { az account set --subscription $id }
     }
 }
+
+export module login.nu
+export module logout.nu

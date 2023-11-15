@@ -184,68 +184,68 @@ def gbd [branch: string = main] {
 # }
 
 # util - generate CIDR details from int range, with additional sub/vnet/range context
-def intRangeToCIDRDetails [
-    --ref1:int                          # start int
-    --ref2:int                          # end int
-    --range:string                      # which known range to be used
-    --text:string = ''                  # text for subscription and vnetName
-] {
-    let free = $ref2 - $ref1
+# def intRangeToCIDRDetails [
+#     --ref1:int                          # start int
+#     --ref2:int                          # end int
+#     --range:string                      # which known range to be used
+#     --text:string = ''                  # text for subscription and vnetName
+# ] {
+#     let free = $ref2 - $ref1
 
-    if $free == 0 { return }
+#     if $free == 0 { return }
 
-    let cidr = ($ref1 | into bits | split row (char space) | reverse | str join | bits32ToIPv4) + $'/(32 - ($free | math log 2 | math floor))'
-    let details = $cidr | cidr | first
+#     let cidr = ($ref1 | into bits | split row (char space) | reverse | str join | bits32ToIPv4) + $'/(32 - ($free | math log 2 | math floor))'
+#     let details = $cidr | cidr | first
 
-    {subscription: $text, vnetName: $text, cidr: $cidr} | merge $details  | merge {range: $range}
-}
+#     {subscription: $text, vnetName: $text, cidr: $cidr} | merge $details  | merge {range: $range}
+# }
 
 
 ### op ################################################################################
 
 # util - get documents with tag from vault
-def docs-op [
-    --vault (-v): string    # which vault to find documents
-    --tag (-t): string      # which tag must exist in documents
-] {
-    op item list --vault $vault --tags $tag --format json | from json | select title
-}
+# def docs-op [
+#     --vault (-v): string    # which vault to find documents
+#     --tag (-t): string      # which tag must exist in documents
+# ] {
+#     op item list --vault $vault --tags $tag --format json | from json | select title
+# }
 
-# util - extract relevant fields record from document in vault
-def fields-op [
-    --vault (-v): string                # which vault hosting document
-    --title: string                     # document title
-    --relevantFields (-f): list<string> # fields to extract
-] {
-    let valOrRef = {|i| if $i.type == 'CONCEALED' {$i.reference} else {$i.value}}
+# # util - extract relevant fields record from document in vault
+# def fields-op [
+#     --vault (-v): string                # which vault hosting document
+#     --title: string                     # document title
+#     --relevantFields (-f): list<string> # fields to extract
+# ] {
+#     let valOrRef = {|i| if $i.type == 'CONCEALED' {$i.reference} else {$i.value}}
 
-    op item get $title --vault $vault --format json
-    | from json
-    | get fields
-    | where label in $relevantFields
-    | reduce -f {} {|it, acc| $acc | merge {$it.label: (do $valOrRef $it)} }
-    # only documents with all relevant fields
-    | do {|r| if ($r | columns ) == $relevantFields {$r} } $in
-}
+#     op item get $title --vault $vault --format json
+#     | from json
+#     | get fields
+#     | where label in $relevantFields
+#     | reduce -f {} {|it, acc| $acc | merge {$it.label: (do $valOrRef $it)} }
+#     # only documents with all relevant fields
+#     | do {|r| if ($r | columns ) == $relevantFields {$r} } $in
+# }
 
-# op - set environment variables in current scope based on 1Password secrets selection
-def-env env-op [
-    --vault (-v): string = Development  # which vault to find env var. documents
-    --tag (-t): string = env_var        # which tag must exist in documents
-] {
-    let relevantFields = ['name' 'value']
+# # op - set environment variables in current scope based on 1Password secrets selection
+# def-env env-op [
+#     --vault (-v): string = Development  # which vault to find env var. documents
+#     --tag (-t): string = env_var        # which tag must exist in documents
+# ] {
+#     let relevantFields = ['name' 'value']
 
-    docs-op --vault $vault --tag $tag
-    | par-each {|d| fields-op --vault $vault --title $d.title --relevantFields $relevantFields}
-    | input list -m
-    | match $in {
-        '' => { return null }
-        $d => { $d }
-    }
-    | each {|r| {$r.name:$"(op read $r.value)"} }
-    | reduce -f {} {|e, acc| $acc | merge $e }
-    | load-env
-}
+#     docs-op --vault $vault --tag $tag
+#     | par-each {|d| fields-op --vault $vault --title $d.title --relevantFields $relevantFields}
+#     | input list -m
+#     | match $in {
+#         '' => { return null }
+#         $d => { $d }
+#     }
+#     | each {|r| {$r.name:$"(op read $r.value)"} }
+#     | reduce -f {} {|e, acc| $acc | merge $e }
+#     | load-env
+# }
 
 ### az ################################################################################
 
@@ -282,52 +282,52 @@ def ac-az [] {
     }
 }
 
-# az - az logout
-def o-az [] {
-    az account list --output json --only-show-errors
-    | from json
-    | match $in {
-        [] => { null }
-        _ => { az logout }
-    }
-}
+# # az - az logout
+# def o-az [] {
+#     az account list --output json --only-show-errors
+#     | from json
+#     | match $in {
+#         [] => { null }
+#         _ => { az logout }
+#     }
+# }
 
-# az - az login via web browser
-def i-az [
-    --scope (-s): string = 'https://graph.microsoft.com/.default'
-    --subList
-] {
-    let login = { az login --scope $scope --only-show-errors --output json }
+# # az - az login via web browser
+# def i-az [
+#     --scope (-s): string = 'https://graph.microsoft.com/.default'
+#     --subList
+# ] {
+#     let login = { az login --scope $scope --only-show-errors --output json }
 
-    o-az
-    if $subList {
-        do $login
-    } else {
-        do $login | from json | print $"Available subscriptions: ($in | length)"
-    }
-}
+#     o-az
+#     if $subList {
+#         do $login
+#     } else {
+#         do $login | from json | print $"Available subscriptions: ($in | length)"
+#     }
+# }
 
-# az - az login with selected service principal
-def i-srv-az [
-    --vault (-v): string = Development                              # which vault to find env var. documents
-    --tag (-t): string = service_principal                          # which tag must exist in service principal documents
-    --scope (-s): string = 'https://graph.microsoft.com/.default'   # default scope for service principal
-] {
-    let relevantFields = ['name' 'tenant_id' 'client_id' 'client_secret']
+# # az - az login with selected service principal
+# def i-srv-az [
+#     --vault (-v): string = Development                              # which vault to find env var. documents
+#     --tag (-t): string = service_principal                          # which tag must exist in service principal documents
+#     --scope (-s): string = 'https://graph.microsoft.com/.default'   # default scope for service principal
+# ] {
+#     let relevantFields = ['name' 'tenant_id' 'client_id' 'client_secret']
 
-    docs-op --vault $vault --tag $tag
-    | par-each {|d| fields-op --vault $vault --title $d.title --relevantFields $relevantFields }
-    | input list -f 'search:'
-    | match $in {
-        '' => { return null }
-        $r => {
-            o-az
-            az login --service-principal --scope $scope --tenant $r.tenant_id --username (op read $r.client_id) --password (op read $r.client_secret) --only-show-errors --output json
-        }
-    }
-    | from json
-    | print $"Available subscriptions: ($in | length)"
-}
+#     docs-op --vault $vault --tag $tag
+#     | par-each {|d| fields-op --vault $vault --title $d.title --relevantFields $relevantFields }
+#     | input list -f 'search:'
+#     | match $in {
+#         '' => { return null }
+#         $r => {
+#             o-az
+#             az login --service-principal --scope $scope --tenant $r.tenant_id --username (op read $r.client_id) --password (op read $r.client_secret) --only-show-errors --output json
+#         }
+#     }
+#     | from json
+#     | print $"Available subscriptions: ($in | length)"
+# }
 
 # az - get azure navno master ip ranges
 def ip-range-az [] {
