@@ -38,3 +38,12 @@ def test_cidr [] {
   assert error {'110.40.240.16/0' | cidr}
   assert error {'110.40.240.16/33' | cidr}
 }
+
+#[test]
+def test_cidr_from_int [] {
+  assert equal (cidr from int -s 1848176641 -e 1848176641) 110.40.240.1/32
+  assert equal (cidr from int -s 1848176640 -e 1848176895) 110.40.240.0/24
+
+  # invalid int range, start > end
+  assert error {cidr from int -s 10 -e 9} 
+}
