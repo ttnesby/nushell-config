@@ -15,7 +15,7 @@ export def int [
   let span = (metadata $free).span
 
   match {free: $free, ipv4: ($start | ipv4 from int)} {
-    {free: $f, ipv4: _} if $f < 0 => { err -s $span -m 'invalid range' -t $'($start) > ($end)' }
+    {free: $f, ipv4: _} if $f < 0 => { err -s $span -m 'invalid int range' -t $'start ($start) > end ($end)' }
     {free: 0, ipv4: $ipv4} => {$ipv4 + '/32'}
     {free: $f, ipv4: $ipv4} => {$ipv4 + $'/(32 - (($f + 1) | math log 2 | math floor))'}
   }
