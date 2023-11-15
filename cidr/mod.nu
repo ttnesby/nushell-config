@@ -1,5 +1,5 @@
 use std repeat
-use ./ipv4
+use ../ipv4
 
 def validate [] {
   let cidr = ($in | parse '{ipv4}/{subnet}')
@@ -37,11 +37,12 @@ def validate [] {
 #  2   255.255.128.0     14.12.0.0        14.12.127.255      14.12.0.1      14.12.127.254        32766    235667456    235700223
 #
 export def main [] {
+    let input = $in
     # https://www.ipconvertertools.com/convert-cidr-manually-binary
 
     let bits32ToInt = {|bits| $bits | into int -r 2 }
 
-    $in
+    $input
     | validate
     | do {|$rec|
       let subnetSize = $rec.subnet | into int
