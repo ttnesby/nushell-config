@@ -25,19 +25,27 @@ def test_from_int [] {
 #[test]
 def test_into_int [] {
   assert equal ('110.40.240.16' | ipv4 into int) 1848176656
+  assert equal ([110.40.240.16 14.12.72.8 10.98.1.64] | ipv4 into int) [1848176656 235685896 174195008]
 
   # wrong pattern
   assert error {'110,40.240' | ipv4 into int}
   # invalid component
   assert error {'110.40.256.16' | ipv4 into int}
+  assert error {[110.40.240.16 14.12.72.256 10.98.1.64] | ipv4 into int}
 }
 
 #[test]
 def test_into_bits [] {
   assert equal ('110.40.240.16' | ipv4 into bits) '01101110001010001111000000010000'
+  assert equal ([110.40.240.16 14.12.72.8 10.98.1.64] | ipv4 into bits) [
+    '01101110001010001111000000010000',
+    '00001110000011000100100000001000',
+    '00001010011000100000000101000000'
+  ]
 
   # wrong pattern
   assert error {'110,40.240' | ipv4 into bits}
   # invalid component
   assert error {'110.40.256.16' | ipv4 into bits}
+  assert error {[110.40.240.16 14.12.72.8 10.98.256.64] | ipv4 into bits}
 }
