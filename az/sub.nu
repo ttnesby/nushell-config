@@ -1,4 +1,4 @@
-use ./helper.nu status
+use ./helpers/status.nu
 
 # module az/sub - set subscription from list of available for current user
 export def set [

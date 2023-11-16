@@ -1,5 +1,5 @@
-use ../op
-use ./helper.nu status
+use ../../op
+use ./status.nu
 
 # module az/token - returns string '<token_type> <access_token>'
 export def principal [
@@ -29,8 +29,7 @@ export def main [
 ] {
   if (status).logged_in {  
     az account get-access-token --scope $scope | from json | $'($in.tokenType) ($in.accessToken)'
-  }
-  else { 
+  } else { 
     '' 
   }
 }

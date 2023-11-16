@@ -1,4 +1,4 @@
-use ./token.nu 
+use ./helpers/token.nu 
 
 # wait for something (202), until completion (200) or another status code
 def wait [
@@ -52,7 +52,7 @@ export def main [
 ] {
     let subs = $in
 
-    let tkn = if $token == '' {token-az} else {$token}
+    let tkn = if $token == '' {token} else {$token}
 
     let currMonth = (date now | format date "%Y%m")
     let prd = if $periode == '' {$currMonth} else {$periode}
@@ -62,7 +62,7 @@ export def main [
     $subs
     | par-each {|s|
         let url = $'https://management.azure.com/subscriptions/($s)/providers/Microsoft.CostManagement/generateDetailedCostReport?api-version=2023-08-01'
-        let cacheFile = (costCacheFile -s $s -p $prd)
+        let cacheFile = (cacheFile -s $s -p $prd)
 
         if ($cacheFile | path exists) and ($prd < $currMonth) {
             $cacheFile

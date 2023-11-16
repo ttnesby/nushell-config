@@ -1,4 +1,4 @@
-use ./helper.nu status
+use ./helpers/status.nu
 
 # module az - logout
 export def logout [] { if (status).logged_in {az logout} }
