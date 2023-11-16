@@ -1,7 +1,7 @@
 use ../../op
 use ./status.nu
 
-# module az/token - returns string '<token_type> <access_token>'
+# returns string '<token_type> <access_token>'
 export def principal [
   --vault: string = Development
   --service_principal: string = az-cost
@@ -23,7 +23,7 @@ export def principal [
   | $'($in.token_type) ($in.access_token)'
 }
 
-# module az/token - returns string '<token_type> <access_token>' for current user
+# returns string '<token_type> <access_token>' for current user
 export def main [
   --scope: string = 'https://management.azure.com/.default'
 ] {

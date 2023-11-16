@@ -1,4 +1,4 @@
-# module az/helper - retuns record for logged in status and list of available subscriptions
+# retuns record for logged in status and list of available subscriptions
 export def main [] {
     az account list --output json --only-show-errors
     | from json

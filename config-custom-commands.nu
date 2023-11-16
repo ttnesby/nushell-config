@@ -516,90 +516,90 @@ def gbd [branch: string = main] {
 # Example:
 # download cost for platform subscriptions connectivity, management, identity - for October
 # $> [575a53ac-e2a1-4215-b45f-028ec4f6f2a5, 7e260459-3026-4653-b259-0347c0bb5970, 9f66c67b-a3b2-45cb-97ec-dd5017e94d89] | cost-az --periode 202310
-def cost-az [
-    --token(-t): string = ''            # see token-az | token-sp-az
-    --periode(-p): string = ''          # YYYYmm
-    --metric(-m): string = ActualCost
-] {
-    let subs = $in
+# def cost-az [
+#     --token(-t): string = ''            # see token-az | token-sp-az
+#     --periode(-p): string = ''          # YYYYmm
+#     --metric(-m): string = ActualCost
+# ] {
+#     let subs = $in
 
-    let tkn = if $token == '' {token-az} else {$token}
+#     let tkn = if $token == '' {token-az} else {$token}
 
-    let currMonth = (date now | format date "%Y%m")
-    let prd = if $periode == '' {$currMonth} else {$periode}
+#     let currMonth = (date now | format date "%Y%m")
+#     let prd = if $periode == '' {$currMonth} else {$periode}
 
-    let headers = [Authorization $'($tkn)' ContentType application/json]
+#     let headers = [Authorization $'($tkn)' ContentType application/json]
 
-    $subs
-    | par-each {|s|
-        let url = $'https://management.azure.com/subscriptions/($s)/providers/Microsoft.CostManagement/generateDetailedCostReport?api-version=2023-08-01'
-        let cacheFile = (costCacheFile -s $s -p $prd)
+#     $subs
+#     | par-each {|s|
+#         let url = $'https://management.azure.com/subscriptions/($s)/providers/Microsoft.CostManagement/generateDetailedCostReport?api-version=2023-08-01'
+#         let cacheFile = (costCacheFile -s $s -p $prd)
 
-        if ($cacheFile | path exists) and ($prd < $currMonth) {
-            $cacheFile
-        } else {
-            http post --allow-errors --full --headers $headers $url ({billingPeriod: $prd, metric: $metric} | to json)
-            | cost-wait --headers $headers
-            | match $in {
-                {headers: $h ,body: $b ,status: 200} => {
-                    let csv = http get ($b.properties.downloadUrl)
-                    $csv | save --force $cacheFile
-                    $cacheFile
-                }
-                {headers: _ ,body: _ ,status:$sc} => { print $sc; return null}
-            }
-        }
-    }
-}
+#         if ($cacheFile | path exists) and ($prd < $currMonth) {
+#             $cacheFile
+#         } else {
+#             http post --allow-errors --full --headers $headers $url ({billingPeriod: $prd, metric: $metric} | to json)
+#             | cost-wait --headers $headers
+#             | match $in {
+#                 {headers: $h ,body: $b ,status: 200} => {
+#                     let csv = http get ($b.properties.downloadUrl)
+#                     $csv | save --force $cacheFile
+#                     $cacheFile
+#                 }
+#                 {headers: _ ,body: _ ,status:$sc} => { print $sc; return null}
+#             }
+#         }
+#     }
+# }
 
 # az - download platform cost CSVs (connectivity, management, identity) for current year and months - 1
-def platform-cost [] {
+# def platform-cost [] {
 
-    let platformSubs = [575a53ac-e2a1-4215-b45f-028ec4f6f2a5, 7e260459-3026-4653-b259-0347c0bb5970, 9f66c67b-a3b2-45cb-97ec-dd5017e94d89]
-    let n = date now | date to-record
+#     let platformSubs = [575a53ac-e2a1-4215-b45f-028ec4f6f2a5, 7e260459-3026-4653-b259-0347c0bb5970, 9f66c67b-a3b2-45cb-97ec-dd5017e94d89]
+#     let n = date now | date to-record
 
-    1..($n.month - 1)
-    | each {|m| # not doing par-each due to rate limiting (429)
-        let p = ($'($n.year)-($m)-1' | into datetime | format date "%Y%m")
-        $platformSubs | par-each {|s| if not ((costCacheFile -s $s -p $p) | path exists) {$s | cost-az --periode $p} }
-    }
-}
+#     1..($n.month - 1)
+#     | each {|m| # not doing par-each due to rate limiting (429)
+#         let p = ($'($n.year)-($m)-1' | into datetime | format date "%Y%m")
+#         $platformSubs | par-each {|s| if not ((costCacheFile -s $s -p $p) | path exists) {$s | cost-az --periode $p} }
+#     }
+# }
 
-def platform-trend [] {
-    let platformSubs = [575a53ac-e2a1-4215-b45f-028ec4f6f2a5, 7e260459-3026-4653-b259-0347c0bb5970, 9f66c67b-a3b2-45cb-97ec-dd5017e94d89]
-    let n = date now | date to-record
+# def platform-trend [] {
+#     let platformSubs = [575a53ac-e2a1-4215-b45f-028ec4f6f2a5, 7e260459-3026-4653-b259-0347c0bb5970, 9f66c67b-a3b2-45cb-97ec-dd5017e94d89]
+#     let n = date now | date to-record
 
-    # get data frames for all subscriptions and months until current month
-    let dFrames = 1..($n.month - 1)
-    | par-each {|m|
-        let p = ($'($n.year)-($m)-1' | into datetime | format date "%Y%m")
-        $platformSubs | cost-az --periode $p | par-each {|f| dfr open $f }
-    }
-    | flatten
+#     # get data frames for all subscriptions and months until current month
+#     let dFrames = 1..($n.month - 1)
+#     | par-each {|m|
+#         let p = ($'($n.year)-($m)-1' | into datetime | format date "%Y%m")
+#         $platformSubs | cost-az --periode $p | par-each {|f| dfr open $f }
+#     }
+#     | flatten
 
-    # reduce all data frames into a single frame
-    let theFrame = $dFrames | skip 1 | reduce -f ($dFrames | first) {|df, acc| $df | dfr append $acc --col }
+#     # reduce all data frames into a single frame
+#     let theFrame = $dFrames | skip 1 | reduce -f ($dFrames | first) {|df, acc| $df | dfr append $acc --col }
 
-    # do some basic calculation (min, max, mean, std, sum) for platform subscriptions
-    $theFrame
-    | dfr with-column ($theFrame | dfr get BillingPeriodEndDate | dfr as-datetime "%m/%d/%Y" | dfr strftime '%m') --name BillingMonth
-    | dfr with-column ($theFrame | dfr get BillingPeriodEndDate | dfr as-datetime "%m/%d/%Y" | dfr strftime '%Y') --name BillingYear
-    | dfr group-by SubscriptionName BillingYear BillingMonth
-    | dfr agg [
-        (dfr col SubscriptionId | dfr first)
-        (dfr col CostInBillingCurrency | dfr sum | dfr as Sum)
-    ]
-    | dfr sort-by SubscriptionName BillingMonth
-    | dfr group-by SubscriptionName BillingYear
-    | dfr agg [
-        (dfr col Sum | dfr min | dfr as MonthlyMin)
-        (dfr col Sum | dfr max | dfr as MonthlyMax)
-        (dfr col Sum | dfr mean | dfr as MonthlyMean)
-        (dfr col Sum | dfr std | dfr as MonthlyStd)
-        (dfr col Sum | dfr sum | dfr as SumYear)
-    ]
-    | dfr sort-by SubscriptionName
-}
+#     # do some basic calculation (min, max, mean, std, sum) for platform subscriptions
+#     $theFrame
+#     | dfr with-column ($theFrame | dfr get BillingPeriodEndDate | dfr as-datetime "%m/%d/%Y" | dfr strftime '%m') --name BillingMonth
+#     | dfr with-column ($theFrame | dfr get BillingPeriodEndDate | dfr as-datetime "%m/%d/%Y" | dfr strftime '%Y') --name BillingYear
+#     | dfr group-by SubscriptionName BillingYear BillingMonth
+#     | dfr agg [
+#         (dfr col SubscriptionId | dfr first)
+#         (dfr col CostInBillingCurrency | dfr sum | dfr as Sum)
+#     ]
+#     | dfr sort-by SubscriptionName BillingMonth
+#     | dfr group-by SubscriptionName BillingYear
+#     | dfr agg [
+#         (dfr col Sum | dfr min | dfr as MonthlyMin)
+#         (dfr col Sum | dfr max | dfr as MonthlyMax)
+#         (dfr col Sum | dfr mean | dfr as MonthlyMean)
+#         (dfr col Sum | dfr std | dfr as MonthlyStd)
+#         (dfr col Sum | dfr sum | dfr as SumYear)
+#     ]
+#     | dfr sort-by SubscriptionName
+# }
 
 ### gcp ################################################################################
 
@@ -619,9 +619,9 @@ def platform-trend [] {
 #     }
 # }
 
-def loadCost-gc [] {
-    ls ~/.azcost/*.csv
-    | each {|f|
-        bq load --source_format=CSV --skip_leading_rows=1 --autodetect --format=json delta-sanctum-793:7e260459_3026_4653_b259_0347c0bb5970.cost $f.name
-    }
-}
+# def loadCost-gc [] {
+#     ls ~/.azcost/*.csv
+#     | each {|f|
+#         bq load --source_format=CSV --skip_leading_rows=1 --autodetect --format=json delta-sanctum-793:7e260459_3026_4653_b259_0347c0bb5970.cost $f.name
+#     }
+# }
