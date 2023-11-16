@@ -1,6 +1,6 @@
 use ./helper.nu status
 
-# module logout - logout
+# module az - logout
 export def logout [] { if (status).logged_in {az logout} }
 
 # module az - login via browser
