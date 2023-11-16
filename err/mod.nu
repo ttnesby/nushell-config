@@ -8,8 +8,7 @@ export def main [
     msg: $msg, 
     label: {
       text: $text, 
-      start: $span.start, 
-      end: $span.end
+      span: $span 
     }
   }
 }

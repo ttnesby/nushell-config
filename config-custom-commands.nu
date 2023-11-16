@@ -82,7 +82,7 @@ def git-repos [
 }
 
 # cd - to repo root from arbitrary sub folder
-def-env rr [] {
+def --env rr [] {
     use std repeat
 
     pwd                                         # current path
@@ -102,14 +102,14 @@ def-env rr [] {
 }
 
 # cd - to git repo
-def-env gd [
+def --env gd [
     query: string = ''
 ] {
     git-repos | fzf-sel $query | if $in != null {cd $in.git-repo}
 }
 
 # cd - to terraform solution within a repo
-def-env td [
+def --env td [
     query: string = ''
 ] { 
     rr # as starting point for the glob

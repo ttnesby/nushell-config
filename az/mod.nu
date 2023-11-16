@@ -1,24 +1,44 @@
+use ./helper.nu status
 
+# module logout - logout
+export def logout [] { if (status).logged_in {az logout} }
 
-# util - raw subscription list to names and id's
-def sub-name-id [] { $in | from json | select name id | sort-by name }
-
-# module az - set subscription from list
-def sub [
-    query: string = ''  # initial fuzzy search
+# module az - login via browser
+export def 'login browser' [
+    --scope (-s): string = 'https://graph.microsoft.com/.default'
+    --subList
 ] {
-    az account list --only-show-errors --output json
-    | sub-name-id
-    | match $in {
-        [] => { login --subList | sub-name-id }
-        $l => {$l}
-    }
-    | fzf-sel $query
-    | match $in {
-        null => { null }
-        {name: _, id: $id} => { az account set --subscription $id }
+    let login = { az login --scope $scope --only-show-errors --output json }
+
+    logout
+    if $subList {
+        do $login
+    } else {
+        do $login | from json | print $"Available subscriptions: ($in | length)"
     }
 }
 
-export module login.nu
-export module logout.nu
+# module login - login with selected 1Password service principals
+export def 'login principal' [
+    --vault (-v): string = Development                              # which vault to find env var. documents
+    --tag (-t): string = service_principal                          # which tag must exist in service principal documents
+    --scope (-s): string = 'https://graph.microsoft.com/.default'   # default scope for service principal
+] {
+    let relevantFields = ['name' 'tenant_id' 'client_id' 'client_secret']
+
+    op titles --vault $vault --tag $tag
+    | par-each {|d| op record --vault $vault --title $d.title --relevantFields $relevantFields }
+    | | fzf-sel ''
+    #| input list -f 'search:'
+    | match $in {
+        null => { return null }
+        $r => {
+            logout
+            az login --service-principal --scope $scope --tenant $r.tenant_id --username (op read $r.client_id) --password (op read $r.client_secret) --only-show-errors --output json
+        }
+    }
+    | from json
+    | print $"Available subscriptions: ($in | length)"
+}
+
+export use sub.nu
