@@ -1,12 +1,12 @@
 # module gc - login
-export def in [
+export def 'login browser' [
 ] {
-    out
+    logout
     do {gcloud auth login --quiet --format=json} | complete | null
 }
 
 # module gc - gcloud auth revoke
-export def out [] {
+export def logout [] {
     gcloud auth list --format=json
     | from json
     | match $in {

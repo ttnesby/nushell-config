@@ -329,116 +329,116 @@ def gbd [branch: string = main] {
 #     | print $"Available subscriptions: ($in | length)"
 # }
 
-# az - get azure navno master ip ranges
-def ip-range-az [] {
-    op item get IP-Ranges --vault Development --format json
-    | from json
-    | get fields
-    | where label != notesPlain
-    | select label value
-    | par-each {|r| {name: $r.label, cidr: $r.value } | merge ($r.value | cidr | first) }
-    | sort-by end name
-}
+# # az - get azure navno master ip ranges
+# def ip-range-az [] {
+#     op item get IP-Ranges --vault Development --format json
+#     | from json
+#     | get fields
+#     | where label != notesPlain
+#     | select label value
+#     | par-each {|r| {name: $r.label, cidr: $r.value } | merge ($r.value | cidr | first) }
+#     | sort-by end name
+# }
 
-# util - calculate cidr details and relate to 'known' IP ranges
-def vnet-details [] {
-    let cidrs = $in
-    let ranges = ip-range-az
+# # util - calculate cidr details and relate to 'known' IP ranges
+# def vnet-details [] {
+#     let cidrs = $in
+#     let ranges = ip-range-az
 
-    $cidrs
-    | par-each {|r|
-        let details = $r.cidr | cidr | first
-        let inRange = $ranges
-            | where start <= $details.start and end >= $details.end
-            | match $in {
-                [] => {'unknown'}
-                [$r] => {$r.name}
-                $l => { $'error - ($l | reduce -f '' {|r,acc| $acc + (char pipe) + $r.name} )'}
-            }
+#     $cidrs
+#     | par-each {|r|
+#         let details = $r.cidr | cidr | first
+#         let inRange = $ranges
+#             | where start <= $details.start and end >= $details.end
+#             | match $in {
+#                 [] => {'unknown'}
+#                 [$r] => {$r.name}
+#                 $l => { $'error - ($l | reduce -f '' {|r,acc| $acc + (char pipe) + $r.name} )'}
+#             }
 
-        $r | merge $details | merge {range: $inRange}
-    }
-    | sort-by -i end subscription vnetName
-}
+#         $r | merge $details | merge {range: $inRange}
+#     }
+#     | sort-by -i end subscription vnetName
+# }
 
-# az - get all cidr's for all vnet's, scoped by authenticated user
-def vnet-az [
-    --details   # add cidr details for each address prefix and tag with known ip ranges
-] {
-    # list of subscriptions
-    az account management-group entities list
-    | from json
-    | where type == /subscriptions
-    | select displayName id name
-    | par-each {|s|
-        # list of networks in a subscription
-        az network vnet list --subscription $s.name
-        | from json
-        # list of cidr's for a network
-        | select name addressSpace
-        | each {|v| {subscription: $s.displayName, vnetName:$v.name, cidr: $v.addressSpace.addressPrefixes} }
-    }
-    | flatten # networks
-    | flatten # cidrs' in a network
-    | sort-by subscription vnetName
-    | if $details { $in | vnet-details } else { $in }
-}
+# # az - get all cidr's for all vnet's, scoped by authenticated user
+# def vnet-az [
+#     --details   # add cidr details for each address prefix and tag with known ip ranges
+# ] {
+#     # list of subscriptions
+#     az account management-group entities list
+#     | from json
+#     | where type == /subscriptions
+#     | select displayName id name
+#     | par-each {|s|
+#         # list of networks in a subscription
+#         az network vnet list --subscription $s.name
+#         | from json
+#         # list of cidr's for a network
+#         | select name addressSpace
+#         | each {|v| {subscription: $s.displayName, vnetName:$v.name, cidr: $v.addressSpace.addressPrefixes} }
+#     }
+#     | flatten # networks
+#     | flatten # cidrs' in a network
+#     | sort-by subscription vnetName
+#     | if $details { $in | vnet-details } else { $in }
+# }
 
-def dfr-vnet-az [] {
-    let subs = az account management-group entities list
-    | from json
-    | dfr into-lazy
-    | dfr filter-with ((dfr col type) == /subscriptions)
-    | dfr select displayName name
+# def dfr-vnet-az [] {
+#     let subs = az account management-group entities list
+#     | from json
+#     | dfr into-lazy
+#     | dfr filter-with ((dfr col type) == /subscriptions)
+#     | dfr select displayName name
 
-    $subs
-    | dfr collect
-    | dfr into-nu
-    | par-each {|s|
-        az network vnet list --subscription $s.name | from json
-        | each {|vnet|
-            {
-                subscription: $s.displayName
-                vnet: $vnet.name
-                enableDdosProtection: $vnet.enableDdosProtection,
-                dhcpOptions: (try { $vnet.dhcpOptions.dnsServers } catch {[]})
-                virtualNetworkPeerings: ($vnet.virtualNetworkPeerings | each {|p| $p.id | path basename })
-                cidr: $vnet.addressSpace.addressPrefixes
-            }
-        }
-    }
-    | flatten
-    | dfr into-lazy
-}
+#     $subs
+#     | dfr collect
+#     | dfr into-nu
+#     | par-each {|s|
+#         az network vnet list --subscription $s.name | from json
+#         | each {|vnet|
+#             {
+#                 subscription: $s.displayName
+#                 vnet: $vnet.name
+#                 enableDdosProtection: $vnet.enableDdosProtection,
+#                 dhcpOptions: (try { $vnet.dhcpOptions.dnsServers } catch {[]})
+#                 virtualNetworkPeerings: ($vnet.virtualNetworkPeerings | each {|p| $p.id | path basename })
+#                 cidr: $vnet.addressSpace.addressPrefixes
+#             }
+#         }
+#     }
+#     | flatten
+#     | dfr into-lazy
+# }
 
 # az - status of master ip ranges, used - and available free sub ranges
 #
 # NB the last free network is invalid, just a temporary marker before fix
-def ip-status-az [
-    --only_available
-] {
-    let ipRanges = ip-range-az
-    let cidrDetails = vnet-az --details | group-by range | sort
+# def ip-status-az [
+#     --only_available
+# ] {
+#     let ipRanges = ip-range-az
+#     let cidrDetails = vnet-az --details | group-by range | sort
 
-    $cidrDetails
-    | reject unknown
-    | items {|k,v|
-        let r = $ipRanges | where name == $k | first
+#     $cidrDetails
+#     | reject unknown
+#     | items {|k,v|
+#         let r = $ipRanges | where name == $k | first
 
-        $v
-        | select start end
-        # see (NB) below, the exceptions are start and end for the ip range itself
-        | prepend {start: $r.start, end: ($r.start - 1)}    # prepend the ip range itself, only the start value
-        | append {start: $r.end, end: $r.end}               # append the ip range itself, only the end value
-        | sort-by end                                       # sort by end value
-        | window 2                                          # pair-wise iteration of all start-end
-        # NB - adding 1 to 0.end due to 1 in diff. between subnets,
-        | where $it.0.end + 1 < $it.1.start                 # only gaps are relevant
-        | each {|p| intRangeToCIDRDetails --ref1 ($p.0.end + 1)  --ref2 $p.1.start --range $k}
-        | if $only_available { $in } else { $in | append $v | sort-by end}
-    }
-    | flatten | sort-by end | group-by range | sort
-}
+#         $v
+#         | select start end
+#         # see (NB) below, the exceptions are start and end for the ip range itself
+#         | prepend {start: $r.start, end: ($r.start - 1)}    # prepend the ip range itself, only the start value
+#         | append {start: $r.end, end: $r.end}               # append the ip range itself, only the end value
+#         | sort-by end                                       # sort by end value
+#         | window 2                                          # pair-wise iteration of all start-end
+#         # NB - adding 1 to 0.end due to 1 in diff. between subnets,
+#         | where $it.0.end + 1 < $it.1.start                 # only gaps are relevant
+#         | each {|p| intRangeToCIDRDetails --ref1 ($p.0.end + 1)  --ref2 $p.1.start --range $k}
+#         | if $only_available { $in } else { $in | append $v | sort-by end}
+#     }
+#     | flatten | sort-by end | group-by range | sort
+# }
 
 # az - get oauth token for a given service principal and scope
 def token-sp-az [
