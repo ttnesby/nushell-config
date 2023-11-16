@@ -63,5 +63,3 @@ def info [] {
 export def main [] {
     $in | par-each --keep-order {|it| $it | validate | info }
 }
-
-export use from.nu

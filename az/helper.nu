@@ -6,3 +6,4 @@ export def status [] {
         _ => { {logged_in: true, subscriptions: $in} }
     }    
 }
+

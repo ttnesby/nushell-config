@@ -40,5 +40,3 @@ export def 'login principal' [
     | from json
     | print $"Available subscriptions: ($in | length)"
 }
-
-export use sub.nu
