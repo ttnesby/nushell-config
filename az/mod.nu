@@ -1,4 +1,5 @@
 use ./helpers/status.nu
+use ../fzf
 
 # module az - logout
 export def logout [] { if (status).logged_in {az logout} }
@@ -29,7 +30,7 @@ export def 'login principal' [
 
     op titles --vault $vault --tag $tag
     | par-each {|d| op record --vault $vault --title $d.title --relevantFields $relevantFields }
-    | fzf-sel $query
+    | fzf select $query
     | match $in {
         null => { return null }
         $r => {

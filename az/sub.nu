@@ -1,4 +1,5 @@
 use ./helpers/status.nu
+use ../fzf
 
 # module az/sub - set subscription from list of available for current user
 export def set [
@@ -11,7 +12,7 @@ export def set [
         $subs
         | select name id 
         | sort-by name
-        | fzf-sel $query
+        | fzf select $query
         | match $in {
             null => { null }
             {name: _, id: $id} => { az account set --subscription $id }
