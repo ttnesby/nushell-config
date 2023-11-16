@@ -18,7 +18,7 @@ export def 'login browser' [
     }
 }
 
-# module login - login with selected 1Password service principals
+# module az - login with selected 1Password service principals
 export def 'login principal' [
     --vault (-v): string = Development                              # which vault to find env var. documents
     --tag (-t): string = service_principal                          # which tag must exist in service principal documents

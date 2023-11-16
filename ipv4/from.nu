@@ -22,7 +22,7 @@ def validateInt [] {
   }
 }
 
-# module from - convert string of 32 bits to ipv4
+# module ipv4/from - convert string of 32 bits to ipv4
 export def bits [] {
   $in | par-each --keep-order {|s|
     [0..7, 8..15, 16..23, 24..31]
@@ -31,7 +31,7 @@ export def bits [] {
   }
 }
 
-# module from - convert int to ipv4
+# module ipv4/from - convert int to ipv4
 export def int [] {
   $in | par-each --keep-order {|it|
     $it

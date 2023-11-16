@@ -250,37 +250,37 @@ def gbd [branch: string = main] {
 ### az ################################################################################
 
 # util - raw sub. list to names and id's
-def sub-name-id [] { $in | from json | select name id | sort-by name }
+#def sub-name-id [] { $in | from json | select name id | sort-by name }
 
 # az - az account set with selected subscription
-def as-az [
-    query: string = ''
-] {
-    az account list --only-show-errors --output json
-    | sub-name-id
-    | match $in {
-        [] => { i-az --subList | sub-name-id }
-        $l => {$l}
-    }
-    | fzf-sel $query
-    | match $in {
-        null => { null }
-        {name: _, id: $id} => { az account set --subscription $id }
-    }
-}
+# def as-az [
+#     query: string = ''
+# ] {
+#     az account list --only-show-errors --output json
+#     | sub-name-id
+#     | match $in {
+#         [] => { i-az --subList | sub-name-id }
+#         $l => {$l}
+#     }
+#     | fzf-sel $query
+#     | match $in {
+#         null => { null }
+#         {name: _, id: $id} => { az account set --subscription $id }
+#     }
+# }
 
 # az - az account show, get current subscription
-def ac-az [] {
-    az account list --only-show-errors --output json
-    | match $in {
-        [] => { '' }
-        $l => {
-            az account show --only-show-errors --output json
-            | from json
-            | get id
-        }
-    }
-}
+# def ac-az [] {
+#     az account list --only-show-errors --output json
+#     | match $in {
+#         [] => { '' }
+#         $l => {
+#             az account show --only-show-errors --output json
+#             | from json
+#             | get id
+#         }
+#     }
+# }
 
 # # az - az logout
 # def o-az [] {

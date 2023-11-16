@@ -1,2 +1,2 @@
-export module from.nu
-export module into.nu
+export use from.nu
+export use into.nu

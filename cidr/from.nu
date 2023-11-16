@@ -1,6 +1,6 @@
 use ../ipv4
 
-# module from - returns cidr representation of the int range
+# module cidr/from - returns cidr representation of the int range
 export def int [
     --start(-s):int   # start int
     --end(-e):int     # end int

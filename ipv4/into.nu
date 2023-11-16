@@ -15,7 +15,7 @@ def validate [] {
   }
 }
 
-# module into - convert ipv4 address to int
+# module ipv4/into - convert ipv4 address to int
 export def int [] {
   $in | par-each --keep-order {|it|
     $it
@@ -26,7 +26,7 @@ export def int [] {
   }
 }
 
-# module into - convert ipv4 address into string of 32 bits
+# module ipv4/into - convert ipv4 address into string of 32 bits
 export def bits [] {
   $in | par-each --keep-order {|it|
     $it

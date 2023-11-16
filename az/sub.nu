@@ -1,6 +1,6 @@
 use ./helper.nu status
 
-# module sub - set subscription from list of available for current user
+# module az/sub - set subscription from list of available for current user
 export def set [
     query: string = ''  # initial fuzzy search
 ] {
@@ -20,7 +20,7 @@ export def set [
     }
 }
 
-# module sub - get current subscription
+# module az/sub - get current subscription
 export def main [] {
   if (status).logged_in {az account show --only-show-errors --output json | from json}
 }
