@@ -1,7 +1,7 @@
 use ./helpers/cost-cache.nu
 use ./cost.nu
 
-# module az/platform - download platform cost CSVs (connectivity, management, identity) for current year and months - 1
+# module az/platform - download platform cost CSVs (connectivity, management, identity) for january..current_months - 1
 export def 'download cost' [] {
 
     let platformSubs = [575a53ac-e2a1-4215-b45f-028ec4f6f2a5, 7e260459-3026-4653-b259-0347c0bb5970, 9f66c67b-a3b2-45cb-97ec-dd5017e94d89]
@@ -10,11 +10,14 @@ export def 'download cost' [] {
     1..($n.month - 1)
     | each {|m| # NB! not doing par-each due to rate limiting (429)
         let p = ($'($n.year)-($m)-1' | into datetime | format date "%Y%m")
-        $platformSubs | par-each {|s| if not ((cost-cache file -s $s -p $p) | path exists) {$s | cost --periode $p} }
+        $platformSubs | par-each {|s| 
+          let file = (cost-cache file -s $s -p $p)
+          if not ( $file | path exists) {$s | cost --periode $p} else { $file } 
+        }
     }
 }
 
-# module az/platform - return aggregated (monthly cost), min,max,mean,std, and total for all months so far in the year  
+# module az/platform - return aggregated (monthly cost), min,max,mean,std, and total for january..current_month - 1
 export def 'cost trend' [] {
     let platformSubs = [575a53ac-e2a1-4215-b45f-028ec4f6f2a5, 7e260459-3026-4653-b259-0347c0bb5970, 9f66c67b-a3b2-45cb-97ec-dd5017e94d89]
     let n = date now | date to-record
