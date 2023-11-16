@@ -23,13 +23,13 @@ export def 'login principal' [
     --vault (-v): string = Development                              # which vault to find env var. documents
     --tag (-t): string = service_principal                          # which tag must exist in service principal documents
     --scope (-s): string = 'https://graph.microsoft.com/.default'   # default scope for service principal
+    --query (-q): string = ''                                       # fuzzy query
 ] {
     let relevantFields = ['name' 'tenant_id' 'client_id' 'client_secret']
 
     op titles --vault $vault --tag $tag
     | par-each {|d| op record --vault $vault --title $d.title --relevantFields $relevantFields }
-    | | fzf-sel ''
-    #| input list -f 'search:'
+    | fzf-sel $query
     | match $in {
         null => { return null }
         $r => {
