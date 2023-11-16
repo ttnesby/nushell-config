@@ -441,73 +441,73 @@ def gbd [branch: string = main] {
 # }
 
 # az - get oauth token for a given service principal and scope
-def token-sp-az [
-    --vault: string = Development
-    --service_principal: string = az-cost
-    --scope: string = 'https://management.azure.com/.default'
-    --grant_type: string = client_credentials
-] {
-    ['tenant_id' 'client_id' 'client_secret']
-    | fields-op --vault $vault --title $service_principal --relevantFields $in
-    | do {|sp|
-        {
-            url: $'https://login.microsoftonline.com/($sp.tenant_id)/oauth2/v2.0/token'
-            client_id: (op read $sp.client_id)
-            client_secret: (op read $sp.client_secret)
-            grant_type: $grant_type
-            scope: $scope
-        }
-    } $in
-    | http post --content-type application/x-www-form-urlencoded $in.url ($in | reject url | url build-query)
-    | $'($in.token_type) ($in.access_token)'
-}
+# def token-sp-az [
+#     --vault: string = Development
+#     --service_principal: string = az-cost
+#     --scope: string = 'https://management.azure.com/.default'
+#     --grant_type: string = client_credentials
+# ] {
+#     ['tenant_id' 'client_id' 'client_secret']
+#     | fields-op --vault $vault --title $service_principal --relevantFields $in
+#     | do {|sp|
+#         {
+#             url: $'https://login.microsoftonline.com/($sp.tenant_id)/oauth2/v2.0/token'
+#             client_id: (op read $sp.client_id)
+#             client_secret: (op read $sp.client_secret)
+#             grant_type: $grant_type
+#             scope: $scope
+#         }
+#     } $in
+#     | http post --content-type application/x-www-form-urlencoded $in.url ($in | reject url | url build-query)
+#     | $'($in.token_type) ($in.access_token)'
+# }
 
 # az - get oauth token for current user, subscription and scope
-def token-az [
-    --scope: string = 'https://management.azure.com/.default'
-] {
-    az account get-access-token --scope $scope
-    | from json
-    | $'($in.tokenType) ($in.accessToken)'
-}
+# def token-az [
+#     --scope: string = 'https://management.azure.com/.default'
+# ] {
+#     az account get-access-token --scope $scope
+#     | from json
+#     | $'($in.tokenType) ($in.accessToken)'
+# }
 
 # util - wait for something (202), until completion (200) or another status code
-def cost-wait [
-    --headers: string
-] {
-    match $in {
-        {headers: $h ,body: _ ,status: 202} => {
-            let waitUrl = ($h.response | where name == location | get 0.value)
-            let retryAfter = ($h.response | where name == retry-after | get 0.value) | into int | into duration --unit sec
+# def cost-wait [
+#     --headers: string
+# ] {
+#     match $in {
+#         {headers: $h ,body: _ ,status: 202} => {
+#             let waitUrl = ($h.response | where name == location | get 0.value)
+#             let retryAfter = ($h.response | where name == retry-after | get 0.value) | into int | into duration --unit sec
 
-            print $'estimated cost complection: ($retryAfter) - waiting'
+#             print $'estimated cost complection: ($retryAfter) - waiting'
 
-            mut r = $in
-            loop {
-                sleep $retryAfter
-                $r = (http get --allow-errors --full --headers $headers $waitUrl)
-                if $r.status != 202 { break }
-            }
-            $r
-        }
-        _ => { $in }
-    }
-}
+#             mut r = $in
+#             loop {
+#                 sleep $retryAfter
+#                 $r = (http get --allow-errors --full --headers $headers $waitUrl)
+#                 if $r.status != 202 { break }
+#             }
+#             $r
+#         }
+#         _ => { $in }
+#     }
+# }
 
-# util - cost cache dir for download of cost CSV
-def costCacheDir [] {
-    let cacheDir = ('~/.azcost' | path expand)
-    if (not ($cacheDir | path exists)) {mkdir $cacheDir }
-    $cacheDir
-}
+# # util - cost cache dir for download of cost CSV
+# def costCacheDir [] {
+#     let cacheDir = ('~/.azcost' | path expand)
+#     if (not ($cacheDir | path exists)) {mkdir $cacheDir }
+#     $cacheDir
+# }
 
 # util - cost cache file for download of cost CSV file
-def costCacheFile [
-    --subscription(-s):string
-    --periode(-p):string
-] {
-    costCacheDir | path join $'($subscription)-($periode).csv'
-}
+# def costCacheFile [
+#     --subscription(-s):string
+#     --periode(-p):string
+# ] {
+#     costCacheDir | path join $'($subscription)-($periode).csv'
+# }
 
 # see https://learn.microsoft.com/en-us/rest/api/cost-management/generate-cost-details-report/create-operation?view=rest-cost-management-2023-08-01&tabs=HTTP
 
@@ -603,21 +603,21 @@ def platform-trend [] {
 
 ### gcp ################################################################################
 
-def i-gc [
-] {
-    o-gc
-    do {gcloud auth login --quiet --format=json} | complete | null
-}
+# def i-gc [
+# ] {
+#     o-gc
+#     do {gcloud auth login --quiet --format=json} | complete | null
+# }
 
-# az - gcloud auth revoke
-def o-gc [] {
-    gcloud auth list --format=json
-    | from json
-    | match $in {
-        [] => { null }
-        _ => { do { gcloud auth revoke --format=json } | complete | null }
-    }
-}
+# # az - gcloud auth revoke
+# def o-gc [] {
+#     gcloud auth list --format=json
+#     | from json
+#     | match $in {
+#         [] => { null }
+#         _ => { do { gcloud auth revoke --format=json } | complete | null }
+#     }
+# }
 
 def loadCost-gc [] {
     ls ~/.azcost/*.csv
