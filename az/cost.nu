@@ -14,7 +14,7 @@ def wait [
 
             mut r = $in
             loop {
-                sleep $retryAfter
+                sleep 5sec
                 $r = (http get --allow-errors --full --headers $headers $waitUrl)
                 if $r.status != 202 { break }
             }
@@ -54,6 +54,61 @@ export def main [
             {status: 0, message: 'local cache', file: $cacheFile}
         } else {
             http post --allow-errors --full --headers $headers $url ({billingPeriod: $prd, metric: $metric} | to json)
+            | wait --headers $headers
+            | match $in {
+                {headers: $h ,body: $b ,status: 200} => {
+                    match ($b.properties.downloadUrl) {
+                        null => {
+                            {status: 200, message: 'null downloadUrl', file: $cacheFile}
+                        }
+                        _ => {
+                            http get ($b.properties.downloadUrl) | save --force $cacheFile
+                            {status: 200, message: ok, file: $cacheFile}
+                        }
+                    }
+                }
+                {headers: _ ,body: _ ,status: 204} => {
+                    '' | save --force $cacheFile 
+                    {status: 204, message: 'no content', file: $cacheFile}
+                }
+                {headers: $h ,body: $b ,status: 422} => {
+                    {status: 422, message: $b.error.message, file: $cacheFile}
+                }
+                {headers: $h ,body: $b ,status: 429} => {
+                    {status: 429, message: $b.error.message, file: $cacheFile}
+                }
+                {headers: $h ,body: $b ,status:$sc} => { 
+                    {status: $sc, message: 'unknown case', file: $cacheFile}
+                }
+            }
+        }
+    }
+}
+
+# module az/cost - download cost CSV for subscription(s) and given start - end periode
+export def days [
+    --token(-t): string = ''            # see token main|token principal
+    --periode(-p): record<start: string, end: string> = {}
+    --metric(-m): string = ActualCost
+] {
+    let subs = $in
+
+    let tkn = if $token == '' {token} else {$token}
+
+    let yesterday = {start: ((date now) - 1day | format date "%Y-%m-%d"), end: ((date now) - 1day | format date "%Y-%m-%d")}
+    let prd = if $periode == {} {$yesterday} else {$periode}
+
+    let headers = [Authorization $'($tkn)' ContentType application/json]
+
+    $subs
+    | par-each --keep-order {|s|
+        let url = $'https://management.azure.com/subscriptions/($s)/providers/Microsoft.CostManagement/generateDetailedCostReport?api-version=2023-08-01'
+        let cacheFile = (cost-cache file -s $s -p $'($prd.start)-($prd.end)')
+
+        if ($cacheFile | path exists) {
+            {status: 0, message: 'local cache', file: $cacheFile}
+        } else {
+            http post --allow-errors --full --headers $headers $url ({timePeriod: $prd, metric: $metric} | to json)
             | wait --headers $headers
             | match $in {
                 {headers: $h ,body: $b ,status: 200} => {
