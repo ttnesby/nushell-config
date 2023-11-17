@@ -11,8 +11,8 @@ export def 'download cost' [] {
     | each {|m| # NB! not doing par-each due to rate limiting (429)
         let p = ($'($n.year)-($m)-1' | into datetime | format date "%Y%m")
         $platformSubs | par-each {|s| 
-          let file = (cost-cache file -s $s -p $p)
-          if not ( $file | path exists) {$s | cost --periode $p} else { $file } 
+            let file = (cost-cache file -s $s -p $p)
+            if not ( $file | path exists) {$s | cost --periode $p} else { $file } 
         }
     }
 }
