@@ -1,4 +1,5 @@
 use ./helpers/status.nu
+use ../op
 use ../fzf
 
 # module az - logout

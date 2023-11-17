@@ -3,25 +3,25 @@ use ./helpers/token.nu
 
 # wait for something (202), until completion (200) or another status code
 def wait [
-  --headers: string
+    --headers: string
 ] {
-  match $in {
-    {headers: $h ,body: _ ,status: 202} => {
-      let waitUrl = ($h.response | where name == location | get 0.value)
-      let retryAfter = ($h.response | where name == retry-after | get 0.value) | into int | into duration --unit sec
+    match $in {
+        {headers: $h ,body: _ ,status: 202} => {
+            let waitUrl = ($h.response | where name == location | get 0.value)
+            let retryAfter = ($h.response | where name == retry-after | get 0.value) | into int | into duration --unit sec
 
-      print $'estimated cost complection: ($retryAfter) - waiting'
+            print $'estimated cost complection: ($retryAfter) - waiting'
 
-      mut r = $in
-      loop {
-          sleep $retryAfter
-          $r = (http get --allow-errors --full --headers $headers $waitUrl)
-          if $r.status != 202 { break }
-      }
-      $r
+            mut r = $in
+            loop {
+                sleep $retryAfter
+                $r = (http get --allow-errors --full --headers $headers $waitUrl)
+                if $r.status != 202 { break }
+            }
+            $r
+        }
+            _ => { $in }
     }
-      _ => { $in }
-  }
 }
 
 # see https://learn.microsoft.com/en-us/rest/api/cost-management/generate-cost-details-report/create-operation?view=rest-cost-management-2023-08-01&tabs=HTTP
@@ -46,22 +46,40 @@ export def main [
     let headers = [Authorization $'($tkn)' ContentType application/json]
 
     $subs
-    | par-each {|s|
+    | par-each --keep-order {|s|
         let url = $'https://management.azure.com/subscriptions/($s)/providers/Microsoft.CostManagement/generateDetailedCostReport?api-version=2023-08-01'
         let cacheFile = (cost-cache file -s $s -p $prd)
 
         if ($cacheFile | path exists) and ($prd < $currMonth) {
-            $cacheFile
+            {status: 0, message: 'local cache', file: $cacheFile}
         } else {
             http post --allow-errors --full --headers $headers $url ({billingPeriod: $prd, metric: $metric} | to json)
             | wait --headers $headers
             | match $in {
                 {headers: $h ,body: $b ,status: 200} => {
-                    let csv = http get ($b.properties.downloadUrl)
-                    $csv | save --force $cacheFile
-                    $cacheFile
+                    match ($b.properties.downloadUrl) {
+                        null => {
+                            {status: 200, message: 'null downloadUrl', file: $cacheFile}
+                        }
+                        _ => {
+                            http get ($b.properties.downloadUrl) | save --force $cacheFile
+                            {status: 200, message: ok, file: $cacheFile}
+                        }
+                    }
                 }
-                {headers: _ ,body: _ ,status:$sc} => { print $sc; return null}
+                {headers: _ ,body: _ ,status: 204} => {
+                    '' | save --force $cacheFile 
+                    {status: 204, message: 'no content', file: $cacheFile}
+                }
+                {headers: $h ,body: $b ,status: 422} => {
+                    {status: 422, message: $b.error.message, file: $cacheFile}
+                }
+                {headers: $h ,body: $b ,status: 429} => {
+                    {status: 429, message: $b.error.message, file: $cacheFile}
+                }
+                {headers: $h ,body: $b ,status:$sc} => { 
+                    {status: $sc, message: 'unknown case', file: $cacheFile}
+                }
             }
         }
     }
