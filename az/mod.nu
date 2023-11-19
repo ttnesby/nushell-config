@@ -13,7 +13,7 @@ export def 'login browser' [
     --subList                                                       # flag for returning subscription list for current user
 ] {
     let login = { az login --scope $scope --only-show-errors --output json }
-    let currentSpace = arcbrowser space get
+    let currentSpace = (arcbrowser space get | lines | get 0) # careful with os feedback, hidden LF
 
     arcbrowser space set --name $arc_space
 
