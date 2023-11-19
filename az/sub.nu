@@ -23,5 +23,5 @@ export def set [
 
 # module az/sub - get current subscription
 export def main [] {
-  if (status).logged_in {az account show --only-show-errors --output json | from json}
+  if (status).logged_in { az account show --only-show-errors --output json | from json }
 }

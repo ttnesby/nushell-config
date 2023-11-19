@@ -1,29 +1,6 @@
 # prerequiste - 1Password op client
-
-# module op - return table of document titles in vault with tag
-export def titles [
-    --vault (-v): string    # which vault to find documents
-    --tag (-t): string      # which tag must exist in documents
-] {
-    op item list --vault $vault --tags $tag --format json | from json | select title
-}
-
-# module op - return record of fields based on relevantFields, title and vault
-export def record [
-    --vault (-v): string                # which vault hosting document
-    --title: string                     # document title
-    --relevantFields (-f): list<string> # fields to extract
-] {
-    let valOrRef = {|i| if $i.type == 'CONCEALED' {$i.reference} else {$i.value}}
-
-    op item get $title --vault $vault --format json
-    | from json
-    | get fields
-    | where label in $relevantFields
-    | reduce -f {} {|it, acc| $acc | merge {$it.label: (do $valOrRef $it)} }
-    # only documents with all relevant fields
-    | do {|r| if ($r | columns ) == $relevantFields {$r} } $in
-}
+use ./helpers/read.nu *
+use ../fzf
 
 # module op - set environments from a list given by env_var documents in vault
 export def-env 'set env' [
@@ -42,4 +19,39 @@ export def-env 'set env' [
     | each {|r| {$r.name:$"(op read $r.value)"} }
     | reduce -f {} {|e, acc| $acc | merge $e }
     | load-env
+}
+
+# module op - select service principal by service_principal documents in vault
+export def 'select service principal' [
+    --vault (-v): string = Development      # which vault to find env var. documents
+    --tag (-t): string = service_principal  # which tag must exist in service principal documents
+    --query (-q): string = ''               # fuzzy query
+] {
+    let relevantFields = ['name' 'tenant_id' 'client_id' 'client_secret']
+    let empty = {}
+
+    titles --vault $vault --tag $tag
+    | par-each {|d| record --vault $vault --title $d.title --relevantFields $relevantFields }
+    | sort-by name
+    | match $in {
+        [] => {return null}
+        $list => {
+            $list
+            | select name
+            | fzf select $query
+            | match $in {
+                null => { return null }
+                $aName => { 
+                    $list 
+                    | where name == $aName.name 
+                    | get 0 
+                    | {
+                        tenant_id: $in.tenant_id, 
+                        client_id: (op read $in.client_id), 
+                        client_secret: (op read $in.client_secret)
+                    }
+                }
+            }
+        }
+    }
 }
