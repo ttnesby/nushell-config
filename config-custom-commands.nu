@@ -8,7 +8,7 @@ def cco [] {
     let cmd = scope commands | where is_custom == true and usage != '' and name not-in ['pwd'] | select name usage
     let ali = scope aliases | where usage != '' | select name usage
 
-    do $withType $cmd | append (do $withType $ali) | group-by type | sort
+    do $withType $cmd | append (do $withType $ali) | sort-by type name #group-by type | sort
 }
 
 # gen - dir content as grid, used in pwd hook
