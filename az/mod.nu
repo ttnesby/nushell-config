@@ -7,10 +7,14 @@ export def logout [] { if (status).logged_in {az logout} }
 
 # module az - login via browser
 export def 'login browser' [
-    --scope (-s): string = 'https://graph.microsoft.com/.default'
-    --subList
+    --scope (-s): string = 'https://graph.microsoft.com/.default'   # login scope
+    --arc_space: string = '@ra'                                     # which Arc browser space for navno user
+    --subList                                                       # flag for returning subscription list for current user
 ] {
     let login = { az login --scope $scope --only-show-errors --output json }
+    let activeArcSpace = osascript ($env.PCF | path expand | path join getActiveArcSpace.scpt)
+
+    osascript ($env.PCF | path expand | path join activateArcSpace.scpt) $arc_space
 
     logout
     if $subList {
@@ -18,6 +22,8 @@ export def 'login browser' [
     } else {
         do $login | from json | print $"Available subscriptions: ($in | length)"
     }
+
+    osascript ($env.PCF | path expand | path join activateArcSpace.scpt) $activeArcSpace
 }
 
 # module az - login with selected 1Password service principals
