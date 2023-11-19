@@ -1,6 +1,7 @@
 use ./helpers/status.nu
 use ../op
 use ../fzf
+use ../arcbrowser
 
 # module az - logout
 export def logout [] { if (status).logged_in {az logout} }
@@ -12,9 +13,9 @@ export def 'login browser' [
     --subList                                                       # flag for returning subscription list for current user
 ] {
     let login = { az login --scope $scope --only-show-errors --output json }
-    let activeArcSpace = osascript ($env.PCF | path expand | path join getActiveArcSpace.scpt)
+    let currentSpace = arcbrowser space get
 
-    osascript ($env.PCF | path expand | path join activateArcSpace.scpt) $arc_space
+    arcbrowser space set --name $arc_space
 
     logout
     if $subList {
@@ -23,7 +24,7 @@ export def 'login browser' [
         do $login | from json | print $"Available subscriptions: ($in | length)"
     }
 
-    osascript ($env.PCF | path expand | path join activateArcSpace.scpt) $activeArcSpace
+    arcbrowser space set --name $currentSpace
 }
 
 # module az - login with selected 1Password service principals
