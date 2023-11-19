@@ -47,6 +47,21 @@ alias gol = ~/goland
 # app - neovim editor
 alias e = /opt/homebrew/bin/nvim
 
+# app - do daily brew
+def br [] {
+    brew doctor | lines
+    | match $in {
+        [$s] if $s != 'Your system is ready to brew.' => {return null}
+        _ => {
+            brew update | lines
+            | match $in {
+                [$s] if $s == 'Already up-to-date.' => {return null}
+                _ => {brew upgrade | lines}
+            }
+        }
+    }
+}
+
 ### cd ################################################################################
 
 # cd/util - list of git repos used with gd command
