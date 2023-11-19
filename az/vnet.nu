@@ -1,20 +1,10 @@
 use ../cidr
 
-# get master of known cidr's used for azure vnet planning, could be a nuon file in home folder
-def master [] {
-  op item get IP-Ranges --vault Development --format json
-  | from json
-  | get fields
-  | where label != notesPlain
-  | select label value
-  | par-each {|r| {name: $r.label, cidr: $r.value } | merge ($r.value | cidr) }
-  | sort-by end name
-}
-
 # add cidr info and master name for a list of azure vnets
-def details [] {
+def details [
+  --master: table<name: string, cidr: string, subnetMask: string, networkAddress: string, broadcastAddress: string, firstIP: string, lastIP: string, noOfHosts: int, start: int, end: int>
+] {
   let vnets = $in
-  let master = master
 
   $vnets
   | par-each {|r|
@@ -26,7 +16,7 @@ def details [] {
               [$r] => {$r.name}
               $l => { $'error - ($l | reduce -f '' {|r,acc| $acc + (char pipe) + $r.name} )'}
           }
-
+          
       $r | merge $details | merge {master: $inMaster}
   }
   | sort-by -i end subscription vnetName
@@ -34,7 +24,7 @@ def details [] {
 
 # module az/vnet - returns a list of vnets, scoped by authenticated user
 export def list [
-    --with_cidr_info   # add cidr info for each address prefix and master name
+    --master: table<name: string, cidr: string, subnetMask: string, networkAddress: string, broadcastAddress: string, firstIP: string, lastIP: string, noOfHosts: int, start: int, end: int> = []   # cidr master, adding details to vnets
 ] {
   # list of subscriptions
   az account management-group entities list
@@ -52,16 +42,16 @@ export def list [
   | flatten # networks
   | flatten # cidrs' in a network
   | sort-by subscription vnetName
-  | if $with_cidr_info { $in | details } else { $in }
+  | if $master != [] { $in | details --master $master } else { $in }
 }
 
 # module az/vnet - returns a list of all vnets with used|free addresses, scoped by authenticated user
 # NB the last free network is invalid, just a temporary marker
 export def status [
+    --master: table<name: string, cidr: string, subnetMask: string, networkAddress: string, broadcastAddress: string, firstIP: string, lastIP: string, noOfHosts: int, start: int, end: int> = []   # cidr master, adding details to vnets
     --only_available
 ] {
-  let master = master
-  let vnets = list --with_cidr_info | group-by master | sort
+  let vnets = list --master $master | group-by master | sort
 
   $vnets
   | reject unknown

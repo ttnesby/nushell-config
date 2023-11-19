@@ -1,6 +1,7 @@
 # prerequiste - 1Password op client
 use ./helpers/read.nu *
 use ../fzf
+use ../cidr
 
 # module op - set environments from a list given by env_var documents in vault
 export def-env 'set env' [
@@ -54,4 +55,15 @@ export def 'select service principal' [
             }
         }
     }
+}
+
+# module op - return a CIDR master, list of known network CIDR's for ip planning
+export def 'cidr master' [] {
+    op item get IP-Ranges --vault Development --format json
+    | from json
+    | get fields
+    | where label != notesPlain
+    | select label value
+    | par-each {|r| {name: $r.label, cidr: $r.value } | merge ($r.value | cidr) }
+    | sort-by end name
 }
