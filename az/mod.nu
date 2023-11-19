@@ -30,21 +30,32 @@ export def 'login browser' [
 export def 'login principal' [
     --vault (-v): string = Development                              # which vault to find env var. documents
     --tag (-t): string = service_principal                          # which tag must exist in service principal documents
-    --scope (-s): string = 'https://graph.microsoft.com/.default'   # default scope for service principal
+    --scope (-s): string = 'https://graph.microsoft.com/.default'   # login scope for service principal
     --query (-q): string = ''                                       # fuzzy query
 ] {
     let relevantFields = ['name' 'tenant_id' 'client_id' 'client_secret']
 
     op titles --vault $vault --tag $tag
-    | par-each {|d| op record --vault $vault --title $d.title --relevantFields $relevantFields }
-    | fzf select $query
+    | par-each --keep-order {|d| op record --vault $vault --title $d.title --relevantFields $relevantFields }
+    # only present name, rest is not required
     | match $in {
-        null => { return null }
-        $r => {
-            logout
-            az login --service-principal --scope $scope --tenant $r.tenant_id --username (op read $r.client_id) --password (op read $r.client_secret) --only-show-errors --output json
+        [] => {return null}
+        _ => {
+            let pList = $in
+            $pList
+            # must present a table of records, get name is not possible due to fzf select being record oriented 
+            | select name
+            | fzf select $query
+            | match $in {
+                null => { return null }
+                $aName => {
+                    let r = $pList | where name == $aName.name | get 0
+                    logout
+                    az login --service-principal --scope $scope --tenant $r.tenant_id --username (op read $r.client_id) --password (op read $r.client_secret) --only-show-errors --output json
+                }
+            }
+            | from json
+            | print $"Available subscriptions: ($in | length)"
         }
     }
-    | from json
-    | print $"Available subscriptions: ($in | length)"
 }
