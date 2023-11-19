@@ -44,6 +44,9 @@ alias tf = terraform
 # app - goland editor
 alias gol = ~/goland
 
+# app - neovim editor
+alias e = /opt/homebrew/bin/nvim
+
 ### cd ################################################################################
 
 # cd/util - list of git repos used with gd command
