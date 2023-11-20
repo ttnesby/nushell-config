@@ -6,17 +6,17 @@ export def int [
     --end(-e):int     # end int
 ] {
 
-  # free range should be from network address int to next network address int
-  # By adding +1 when calculating subnet, the range is more natural, netw. address to broadcast
+    # free range should be from network address int to next network address int
+    # By adding +1 when calculating subnet, the range is more natural, netw. address to broadcast
 
-  # NB! math floor is lazy approach, rounding down to whole math log 2 - good enough
+    # NB! math floor is lazy approach, rounding down to whole math log 2 - good enough
 
-  let free = $end - $start
-  let span = (metadata $free).span
+    let free = $end - $start
+    let span = (metadata $free).span
 
-  match {free: $free, ipv4: ($start | ipv4 from int)} {
-    {free: $f, ipv4: _} if $f < 0 => { err -s $span -m 'invalid int range' -t $'start ($start) > end ($end)' }
-    {free: 0, ipv4: $ipv4} => {$ipv4 + '/32'}
-    {free: $f, ipv4: $ipv4} => {$ipv4 + $'/(32 - (($f + 1) | math log 2 | math floor))'}
-  }
+    match {free: $free, ipv4: ($start | ipv4 from int)} {
+        {free: $f, ipv4: _} if $f < 0 => { err -s $span -m 'invalid int range' -t $'start ($start) > end ($end)' }
+        {free: 0, ipv4: $ipv4} => {$ipv4 + '/32'}
+        {free: $f, ipv4: $ipv4} => {$ipv4 + $'/(32 - (($f + 1) | math log 2 | math floor))'}
+    }
 }

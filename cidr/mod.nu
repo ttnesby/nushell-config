@@ -2,43 +2,43 @@ use std repeat
 use ../ipv4
 
 def validate [] {
-  let cidr = ($in | parse '{ipv4}/{subnet}')
-  let span = (metadata $cidr).span
-  let validSubnet = (1..32 | each {|it| $it | into string})
+    let cidr = ($in | parse '{ipv4}/{subnet}')
+    let span = (metadata $cidr).span
+    let validSubnet = (1..32 | each {|it| $it | into string})
 
-  match $cidr {
-    [] => {
-      err -s $span -m 'invalid string' -t 'not according to {ipv4}/{subnet} pattern'
+    match $cidr {
+        [] => {
+        err -s $span -m 'invalid string' -t 'not according to {ipv4}/{subnet} pattern'
+        }
+        [$r] if not (($r.subnet in $validSubnet) and ($r.ipv4 | ipv4 into bits | describe) == 'string') => {
+        err -s $span -m 'invalid string' -t 'in {ipv4}/{subnet}, 1 <= subnet <= 32'
+        }
+        _ => {$cidr.0}
     }
-    [$r] if not (($r.subnet in $validSubnet) and ($r.ipv4 | ipv4 into bits | describe) == 'string') => {
-      err -s $span -m 'invalid string' -t 'in {ipv4}/{subnet}, 1 <= subnet <= 32'
-    }
-    _ => {$cidr.0}
-  }
 }
 
 def info [] {
-  let rec: record<ipv4: string, subnet: string> = $in
+    let rec: record<ipv4: string, subnet: string> = $in
 
-  let subnetSize = $rec.subnet | into int
-  let ipAsSubnetSizeBits = $rec.ipv4 | ipv4 into bits | str substring 0..$subnetSize
+    let subnetSize = $rec.subnet | into int
+    let ipAsSubnetSizeBits = $rec.ipv4 | ipv4 into bits | str substring 0..$subnetSize
 
-  let networkBits = '1' | repeat $subnetSize | str join
-  let noHostsBits = '0' | repeat (32 - $subnetSize) | str join
-  let bCastHostsBits = '1' | repeat (32 - $subnetSize) | str join
-  let firstHostBits = if $rec.subnet == '32' {''} else {('0' | repeat (32 - $subnetSize - 1) | str join) + '1'}
-  let lastHostBits = if $rec.subnet == '32' {''} else {('1' | repeat (32 - $subnetSize - 1) | str join) + '0'}
+    let networkBits = '1' | repeat $subnetSize | str join
+    let noHostsBits = '0' | repeat (32 - $subnetSize) | str join
+    let bCastHostsBits = '1' | repeat (32 - $subnetSize) | str join
+    let firstHostBits = if $rec.subnet == '32' {''} else {('0' | repeat (32 - $subnetSize - 1) | str join) + '1'}
+    let lastHostBits = if $rec.subnet == '32' {''} else {('1' | repeat (32 - $subnetSize - 1) | str join) + '0'}
 
-  {
-      subnetMask: ($networkBits + $noHostsBits | ipv4 from bits)
-      networkAddress: (if $rec.subnet == '32' {'n/a'} else {($ipAsSubnetSizeBits  + $noHostsBits | ipv4 from bits)})
-      broadcastAddress: (if $rec.subnet == '32' {'n/a'} else {($ipAsSubnetSizeBits + $bCastHostsBits | ipv4 from bits)})
-      firstIP: ($ipAsSubnetSizeBits + $firstHostBits | ipv4 from bits)
-      lastIP: ($ipAsSubnetSizeBits + $lastHostBits | ipv4 from bits)
-      noOfHosts: (if $rec.subnet == '32' {1} else {(2 ** (32 - $subnetSize) - 2)})
-      start: ($ipAsSubnetSizeBits  + $noHostsBits | into int -r 2)
-      end: ($ipAsSubnetSizeBits + $bCastHostsBits | into int -r 2)
-  }
+    {
+        subnetMask: ($networkBits + $noHostsBits | ipv4 from bits)
+        networkAddress: (if $rec.subnet == '32' {'n/a'} else {($ipAsSubnetSizeBits  + $noHostsBits | ipv4 from bits)})
+        broadcastAddress: (if $rec.subnet == '32' {'n/a'} else {($ipAsSubnetSizeBits + $bCastHostsBits | ipv4 from bits)})
+        firstIP: ($ipAsSubnetSizeBits + $firstHostBits | ipv4 from bits)
+        lastIP: ($ipAsSubnetSizeBits + $lastHostBits | ipv4 from bits)
+        noOfHosts: (if $rec.subnet == '32' {1} else {(2 ** (32 - $subnetSize) - 2)})
+        start: ($ipAsSubnetSizeBits  + $noHostsBits | into int -r 2)
+        end: ($ipAsSubnetSizeBits + $bCastHostsBits | into int -r 2)
+    }
 }
 
 # module cidr - return cidr info record
