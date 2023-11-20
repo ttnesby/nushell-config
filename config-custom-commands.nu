@@ -1,4 +1,7 @@
-use ~/gitHub/ttnesby/nushell-config/fzf
+use ./config
+use ($config.PATH | path join fzf)
+use ($config.PATH | path join op)
+use ($config.PATH | path join az)
 
 ### gen ################################################################################
 
@@ -60,6 +63,13 @@ def br [] {
             }
         }
     }
+}
+
+# app - az login with service principal
+def sp [
+    --query (-q): string = ''
+] {
+    op select service principal -q $query | az login principal
 }
 
 ### cd ################################################################################

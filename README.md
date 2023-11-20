@@ -17,26 +17,25 @@ $env.config.edit_mode = 'vi'
 use std testing run-tests
 
 # need a constant
-const PERSONAL_CONFIG_FOLDER = '~/gitHub/ttnesby/nushell-config'
-$env.PCF = $PERSONAL_CONFIG_FOLDER
+use ~/gitHub/ttnesby/nushell-config/config
 
 # most custom features as different modules
-use ($PERSONAL_CONFIG_FOLDER | path join az)
-use ($PERSONAL_CONFIG_FOLDER | path join cidr)
-use ($PERSONAL_CONFIG_FOLDER | path join err)
+use ($config.PATH | path join az)
+use ($config.PATH | path join cidr)
+use ($config.PATH | path join err)
 # due to fzf custom command and required consistent table management - no footer
 $env.config.table.mode = 'light'
 $env.config.footer_mode = 'never'
-use ($PERSONAL_CONFIG_FOLDER | path join fzf)
-use ($PERSONAL_CONFIG_FOLDER | path join gc)
-use ($PERSONAL_CONFIG_FOLDER | path join ipv4)
-use ($PERSONAL_CONFIG_FOLDER | path join op)
-use ($PERSONAL_CONFIG_FOLDER | path join arcbrowser)
+use ($config.PATH | path join fzf)
+use ($config.PATH | path join gc)
+use ($config.PATH | path join ipv4)
+use ($config.PATH | path join op)
+use ($config.PATH | path join arcbrowser)
 
-source ($PERSONAL_CONFIG_FOLDER | path join config-oh-my-posh.nu)
-source ($PERSONAL_CONFIG_FOLDER | path join config-completer.nu)
+source ($config.PATH | path join config-oh-my-posh.nu)
+source ($config.PATH | path join config-completer.nu)
 # a few global custom commands, lsg used in pwd hook
-source ($PERSONAL_CONFIG_FOLDER | path join config-custom-commands.nu)
-source ($PERSONAL_CONFIG_FOLDER | path join config-pwd-hook.nu)
-source ($PERSONAL_CONFIG_FOLDER | path join config-keybindings.nu)
+source ($config.PATH | path join config-custom-commands.nu)
+source ($config.PATH | path join config-pwd-hook.nu)
+source ($config.PATH | path join config-keybindings.nu)
 ```
