@@ -1,3 +1,5 @@
+use ../arcbrowser
+
 # module gc - login
 export def 'login browser' [
     --arc_space: string = '@me' # which Arc browser space for navno user    
