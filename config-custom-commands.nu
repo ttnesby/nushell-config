@@ -65,7 +65,7 @@ def br [] {
     }
 }
 
-# app - az login with service principal
+# app - op select service principal -q $query | az login principal
 def sp [
     --query (-q): string = ''
 ] {
