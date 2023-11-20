@@ -1,7 +1,6 @@
-use ./config
-use ($config.PATH | path join fzf)
-use ($config.PATH | path join op)
-use ($config.PATH | path join az)
+use ./fzf
+use ./op
+use ./az
 
 ### gen ################################################################################
 
