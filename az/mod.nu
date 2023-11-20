@@ -9,7 +9,7 @@ export def 'login browser' [
     --scope (-s): string = 'https://graph.microsoft.com/.default'   # login scope
     --arc_space: string = '@ra'                                     # which Arc browser space for navno user
 ] {
-    let currentSpace = (arcbrowser space get | lines | get 0) # careful with system feedback, hidden LF
+    let currentSpace = (arcbrowser space get)
 
     arcbrowser space set --name $arc_space
     logout

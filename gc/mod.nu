@@ -4,7 +4,7 @@ use ../arcbrowser
 export def 'login browser' [
     --arc_space: string = '@me' # which Arc browser space for navno user    
 ] {
-    let currentSpace = (arcbrowser space get | lines | get 0) # careful with system feedback, hidden LF
+    let currentSpace = (arcbrowser space get)
 
     arcbrowser space set --name $arc_space
     logout
