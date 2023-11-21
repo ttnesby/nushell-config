@@ -67,3 +67,21 @@ export def 'cidr master' [] {
     | par-each {|r| {name: $r.label, cidr: $r.value } | merge ($r.value | cidr) }
     | sort-by end name
 }
+
+# module op - return a list of az login users
+export def 'select user' [
+    --query (-q): string = ''
+] {
+    op item get AZ-Login-Users --vault Development --format json
+    | from json
+    | get fields
+    | where label != notesPlain
+    | select label value
+    | par-each {|r| {name: $r.label, space: $r.value } }
+    | sort-by name
+    | fzf select $query
+    | match $in {
+        null => { return null }
+        $user => { $user }
+    }
+}

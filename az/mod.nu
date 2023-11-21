@@ -7,14 +7,17 @@ export def logout [] { if (status).logged_in {az logout} }
 # module az - login via browser
 export def 'login browser' [
     --scope (-s): string = 'https://graph.microsoft.com/.default'   # login scope
-    --arc_space: string = '@ra'                                     # which Arc browser space for navno user
 ] {
-    let currentSpace = (arcbrowser space get)
-
-    arcbrowser space set --name $arc_space
-    logout
-    az login --scope $scope --only-show-errors --output json | from json | print $"Available subscriptions: ($in | length)"
-    arcbrowser space set --name $currentSpace
+    match $in {
+        null => { return null }
+        $user => {
+            let currentSpace = (arcbrowser space get)
+            arcbrowser space set --name $user.space
+            logout
+            az login --scope $scope --only-show-errors --output json | from json | print $"Available subscriptions: ($in | length)"
+            arcbrowser space set --name $currentSpace
+        }
+    }
 }
 
 # module az - login with selected 1Password service principals

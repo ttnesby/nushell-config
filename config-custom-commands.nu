@@ -71,6 +71,13 @@ def sp [
     op select service principal -q $query | az login principal
 }
 
+# app - az login browser with an selected op users
+def us [
+    --query (-q): string = ''    
+] {
+    op select user -q $query | az login browser
+}
+
 ### cd ################################################################################
 
 # cd/util - list of git repos used with gd command
