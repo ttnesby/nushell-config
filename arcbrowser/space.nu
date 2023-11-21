@@ -13,7 +13,7 @@ export def set [
             $config.PATH 
             | path expand 
             | path join $thisFolder
-            | path join activateArcSpace.scpt
+            | path join activateArcSpace.applescript
         ) $name
     }
 }
@@ -25,7 +25,7 @@ export def get [] {
             $config.PATH 
             | path expand 
             | path join $thisFolder
-            | path join getActiveArcSpace.scpt
+            | path join getActiveArcSpace.applescript
         )
         | complete
         | match $in {
