@@ -66,14 +66,14 @@ def br [] {
 
 # app - op select service principal -q $query | az login principal
 def sp [
-    --query (-q): string = ''
+    query: string = ''
 ] {
     op select service principal -q $query | az login principal
 }
 
 # app - az login browser with an selected op users
 def us [
-    --query (-q): string = ''    
+    query: string = ''    
 ] {
     op select user -q $query | az login browser
 }
