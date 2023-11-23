@@ -22,3 +22,14 @@ export def record [
     # only documents with all relevant fields
     | do {|r| if ($r | columns ) == $relevantFields {$r} } $in
 }
+
+export def recordWNP [
+    --vault (-v): string                # which vault hosting document
+    --title: string                     # document title
+] {
+    op item get $title --vault $vault --format json
+    | from json
+    | get fields
+    | where label != notesPlain
+    | select label value
+}

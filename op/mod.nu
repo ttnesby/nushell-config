@@ -8,17 +8,27 @@ export def-env 'set env' [
     --vault (-v): string = Development  # which vault to find documents
     --tag (-t): string = env_var        # which tag must exist in documents
 ] {
-    let relevantFields = ['name' 'value']
-
     titles --vault $vault --tag $tag
-    | par-each {|d| record --vault $vault --title $d.title --relevantFields $relevantFields}
+    | par-each --keep-order {|d| recordWNP --vault $vault --title $d.title }
+    | par-each --keep-order {|l| 
+        {
+            hint: ($l | where label == Hint | get 0.value)
+            env_vars: (
+                $l 
+                | where label != Hint
+                | window 2 --stride 2
+                | each {|l| {($l | first | $in.value):($l | last | $in.value)}} 
+                | reduce -f {} {|e, acc| $acc | merge $e }
+            ) 
+        }
+    }
+    | sort-by hint
     | input list -m
     | match $in {
-        '' => { return null }
-        $d => { $d }
+        null => { return null }
+        $d => { $d.env_vars }
     }
-    | each {|r| {$r.name:$"(op read $r.value)"} }
-    | reduce -f {} {|e, acc| $acc | merge $e }
+    | reduce -f {} {|e, acc| $acc | merge $e }    
     | load-env
 }
 
