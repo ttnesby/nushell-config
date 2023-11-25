@@ -7,23 +7,23 @@ export def titles [
 }
 
 # return record of fields based on relevantFields, title and vault
-export def record [
+export def recordFields [
     --vault (-v): string                # which vault hosting document
     --title: string                     # document title
-    --relevantFields (-f): list<string> # fields to extract
+    --fields (-f): list<string> # fields to extract
 ] {
     let valOrRef = {|i| if $i.type == 'CONCEALED' {$i.reference} else {$i.value}}
 
     op item get $title --vault $vault --format json
     | from json
     | get fields
-    | where label in $relevantFields
+    | where label in $fields
     | reduce -f {} {|it, acc| $acc | merge {$it.label: (do $valOrRef $it)} }
     # only documents with all relevant fields
-    | do {|r| if ($r | columns ) == $relevantFields {$r} } $in
+    | do {|r| if ($r | columns ) == $fields {$r} } $in
 }
 
-export def recordWNP [
+export def recordAll [
     --vault (-v): string                # which vault hosting document
     --title: string                     # document title
 ] {

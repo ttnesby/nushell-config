@@ -1,5 +1,5 @@
 # prerequiste - 1Password op client
-use ./helpers/read.nu *
+use ./helpers/read.nu 
 use ../fzf
 use ../cidr
 
@@ -8,8 +8,8 @@ export def-env 'set env' [
     --vault (-v): string = Development  # which vault to find documents
     --tag (-t): string = env_var        # which tag must exist in documents
 ] {
-    titles --vault $vault --tag $tag
-    | par-each --keep-order {|d| recordWNP --vault $vault --title $d.title }
+    read titles --vault $vault --tag $tag
+    | par-each --keep-order {|d| read recordAll --vault $vault --title $d.title }
     | par-each --keep-order {|l| 
         {
             hint: ($l | where label == Hint | get 0.value)
@@ -38,11 +38,11 @@ export def 'select service principal' [
     --tag (-t): string = service_principal  # which tag must exist in service principal documents
     --query (-q): string = ''               # fuzzy query
 ] {
-    let relevantFields = ['name' 'tenant_id' 'client_id' 'client_secret']
+    let fields = ['name' 'tenant_id' 'client_id' 'client_secret']
     let empty = {}
 
-    titles --vault $vault --tag $tag
-    | par-each {|d| record --vault $vault --title $d.title --relevantFields $relevantFields }
+    read titles --vault $vault --tag $tag
+    | par-each {|d| read recordFields --vault $vault --title $d.title --fields $fields }
     | sort-by name
     | match $in {
         [] => {return null}
@@ -69,11 +69,7 @@ export def 'select service principal' [
 
 # module op - return a CIDR master, list of known network CIDR's for ip planning
 export def 'cidr master' [] {
-    op item get IP-Ranges --vault Development --format json
-    | from json
-    | get fields
-    | where label != notesPlain
-    | select label value
+    read recordAll --vault Development --title IP-Ranges  
     | par-each {|r| {name: $r.label, cidr: $r.value } | merge ($r.value | cidr) }
     | sort-by end name
 }
@@ -82,11 +78,7 @@ export def 'cidr master' [] {
 export def 'select user' [
     --query (-q): string = ''
 ] {
-    op item get AZ-Login-Users --vault Development --format json
-    | from json
-    | get fields
-    | where label != notesPlain
-    | select label value
+    read recordAll --vault Development --title AZ-Login-Users
     | par-each {|r| {name: $r.label, space: $r.value } }
     | sort-by name
     | fzf select $query
