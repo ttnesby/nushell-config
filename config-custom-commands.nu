@@ -142,3 +142,16 @@ def gbd [branch: string = main] {
     | str trim
     | where $it != 'master' and $it != 'main'
     | each { |it| git branch -d $it }}
+
+# # git - switch branch    
+def gb [
+    query: string = ''
+] {
+    git branch
+    | lines
+    | enumerate
+    | where not ($it.item | str starts-with '*')
+    | par-each --keep-order {|r| {item: ($r.item | str trim)}}
+    | fzf select $query 
+    | if $in != null {git checkout $in.item} 
+}
