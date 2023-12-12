@@ -23,10 +23,21 @@ export def --env 'set env' [
         }
     }
     | sort-by hint
-    | input list -m
     | match $in {
-        null => { return null }
-        $d => { $d.env_vars }
+        [] => { return null }
+        $list => {
+            $list
+            | select hint
+            | fzf select
+            | match $in {
+                null => { return null }
+                $aHint => {
+                    $list
+                    | where hint == $aHint.hint
+                    | get 0.env_vars
+                }
+            }
+        }
     }
     | reduce -f {} {|e, acc| $acc | merge $e }    
     | load-env
