@@ -4,7 +4,7 @@ use ../fzf
 use ../cidr
 
 # module op - set environments from a list given by env_var documents in vault
-export def-env 'set env' [
+export def --env 'set env' [
     --vault (-v): string = Development  # which vault to find documents
     --tag (-t): string = env_var        # which tag must exist in documents
 ] {
