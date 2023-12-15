@@ -151,6 +151,13 @@ def gb [
     | lines
     | enumerate
     | where not ($it.item | str starts-with '*')
+    | match $in {
+        [] => {
+            print 'Current branch is the only one'
+            return null
+        }
+        _ => $in
+    }
     | par-each --keep-order {|r| {item: ($r.item | str trim)}}
     | fzf select $query 
     | if $in != null {git checkout $in.item} 
