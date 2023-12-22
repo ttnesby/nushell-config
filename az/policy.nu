@@ -1,11 +1,16 @@
+use ./helpers/http-as-file.nu
+
 export def assignment [] {
-    ^az policy assignment list --scope $in 
-    | from json 
+    let scope = $in
+    let policyDefinitionBlade = 'https://portal.azure.com/#view/Microsoft_Azure_Policy/PolicyDetailBlade/definitionId/'
+
+    ^az policy assignment list --scope $scope
+    | from json
     | par-each --keep-order {|r|
         {
             displayName: $r.displayName
             name: $r.name
-            url: ('https://portal.azure.com/#view/Microsoft_Azure_Policy/PolicyDetailBlade/definitionId/' + ($r.policyDefinitionId | url encode --all))
+            policyDefinition: (http-as-file --name $r.name --url ($policyDefinitionBlade + ($r.policyDefinitionId | url encode --all)))
         }
     }
 }

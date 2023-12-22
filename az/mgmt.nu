@@ -1,3 +1,4 @@
+use ./helpers/http-as-file.nu
 use ./policy.nu
 
 # module az/mgmt - get management group hierarchy from the start node
@@ -12,14 +13,17 @@ export def main [
 def iterate [
 ] {
     let node = $in
+    let policyAssignmentBlade = 'https://portal.azure.com/#view/Microsoft_Azure_Policy/PolicyMenuBlade/~/Assignments/scope/'
 
     if ($node == null) or ($node.type != 'Microsoft.Management/managementGroups') { return null }
 
     [{
         displayName: $node.displayName
         id: $node.id
-        url: ('https://portal.azure.com/#view/Microsoft_Azure_Policy/PolicyMenuBlade/~/Assignments/scope/' + ($node.id | url encode --all))
+        policyAssignment: (http-as-file --name $node.displayName --url ($policyAssignmentBlade + ($node.id | url encode --all)))
         assignments: ($node.id | policy assignment)
     }] 
     | append ($node.children | par-each --keep-order {|node| $node | iterate})
 }
+
+
