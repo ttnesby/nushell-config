@@ -3,7 +3,7 @@ use ./helpers/token.nu
 
 # wait for something (202), until completion (200) or another status code
 def wait [
-    --headers: string
+    --headers: list<string>
 ] {
     match $in {
         {headers: $h ,body: _ ,status: 202} => {

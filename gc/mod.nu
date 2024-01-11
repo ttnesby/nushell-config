@@ -1,3 +1,5 @@
+export module ./cost.nu
+
 use ../arcbrowser
 
 # module gc - login

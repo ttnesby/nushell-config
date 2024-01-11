@@ -1,3 +1,9 @@
+export module ./cost.nu
+export module ./mgmt.nu
+export module ./platform.nu
+export module ./policy.nu
+export module ./vnet.nu
+
 use ./helpers/status.nu
 use ../arcbrowser
 
