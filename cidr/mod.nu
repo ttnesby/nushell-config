@@ -1,4 +1,4 @@
-export module from.nu
+export module ./from.nu
 
 use std repeat
 use ../ipv4
