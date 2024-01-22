@@ -1,5 +1,6 @@
 export module ./cost.nu
 export module ./mgmt.nu
+export module ./sub.nu
 export module ./platform.nu
 export module ./policy.nu
 export module ./vnet.nu
