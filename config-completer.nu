@@ -1,3 +1,5 @@
+# ref. https://www.nushell.sh/cookbook/external_completers.html#putting-it-all-together
+
 let fish_completer = {|spans|
     fish --command $'complete "--do-complete=($spans | str join " ")"'
     | $"value(char tab)description(char newline)" + $in
