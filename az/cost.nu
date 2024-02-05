@@ -139,3 +139,33 @@ export def days [
         }
     }
 }
+
+# module az/cost - get valid billing periods for subscription(s)
+# see details - https://learn.microsoft.com/en-us/rest/api/consumption/#getting-list-of-billing-periods
+#
+# examples:
+# az account list --all --only-show-errors --output json | from json | az cost billing periods | where status == 200
+
+export def "billing periods" [
+    --token(-t): string = '' # see token main|token principal
+] {
+    $in | par-each --keep-order {|sub| 
+
+        let headers = [Authorization $'(if $token == '' {token} else {$token})' ContentType application/json]
+        let url = $'https://management.azure.com/subscriptions/($sub.id)/providers/Microsoft.Billing/billingPeriods?api-version=2017-04-24-preview'
+        let rec = {|
+            status: int, 
+            id: string, 
+            bp: list<record<name:string, start:string, end: string>>
+            | 
+            {status: $status, id: $id, billing_periods: $bp}
+        }
+
+        http get --allow-errors --full --headers $headers $url
+        | match $in {
+            {headers: _ ,body: _ ,status: 404} => (do $rec 404 $sub.id [])
+            {headers: _ ,body: $b ,status: 200} => (do $rec 200 $sub.id ($b.value | each {|p| {name: $p.name, start: $p.properties.billingPeriodStartDate, end: $p.properties.billingPeriodEndDate }}))
+            {headers: _ ,body: _ ,status: $s} => (do $rec $s $sub.id [])
+        }
+    }
+}
