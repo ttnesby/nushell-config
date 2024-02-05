@@ -144,7 +144,30 @@ export def days [
 # see details - https://learn.microsoft.com/en-us/rest/api/consumption/#getting-list-of-billing-periods
 #
 # examples:
-# az account list --all --only-show-errors --output json | from json | az cost billing periods | where status == 200
+#
+# ex1 - get all subscriptions with at least one valid billing periode
+# 
+# az account list --all --only-show-errors --output json 
+# | from json 
+# | az cost billing periods 
+# | where status == 200 and ($it.billing_periods | length) > 0
+#
+# ex2 - get all subscriptions of invalid type (CSP...)
+# 
+# az account list --all --only-show-errors --output json 
+# | from json 
+# | az cost billing periods 
+# | where status == 400
+#
+# ex3 - get all NotFound subscriptions (cancelled more than 90 days?)
+# 
+# az account list --all --only-show-errors --output json 
+# | from json 
+# | az cost billing periods 
+# | where status == 404
+#
+
+
 
 export def "billing periods" [
     --token(-t): string = '' # see token main|token principal
