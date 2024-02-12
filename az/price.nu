@@ -1,3 +1,5 @@
+use ./helpers/price-cache.nu
+
 # see https://learn.microsoft.com/en-us/rest/api/cost-management/retail-prices/azure-retail-prices?view=rest-cost-management-2023-11-01
 
 def 'compile url' [
@@ -17,43 +19,40 @@ def 'compile url' [
     {...$url_rec, ...{params: $params}} | url join
 }
 
-# module az/price - get price list for all az services
-export def main [
-    --currency-code: string = 'NOK'
-    --arm-region-name: string = 'norwayeast'
+def next [url: string] {
 
-] {
+    let rec = {|url: string, items: list<any>| {next_url: $url, items: $items}}
 
-    let url_rec = {
-        scheme: 'https'
-        host: 'prices.azure.com'
-        path: '/api/retail/prices'
+    print $url
+    match (http get --allow-errors --full $url) {
+        {headers: _, body: $b, status: 200} => { do $rec $b.NextPageLink $b.Items }
+        _ => { do $rec null [] }
     }
+}
 
-    let params = {
-        'api-version': '2023-01-01-preview'
-        currencyCode: $currency_code
-        armRegionName: $arm_region_name
-    }
+# module az/price - get price list for all az services as json file (~442 MB)
+export def 'as json file' [--currency-code: string = 'NOK'] {
 
-    mut url = ({...$url_rec, ...{params: $params}} | url join)
-    mut continue = true
+    mut next_url = (compile url --currency-code $currency_code)
     mut items = []
 
-    while $continue {
-
-        let res = http get --allow-errors --full $url
-        if $res.status == 200 {
-            $continue = $res.body.NextPageLink != null
-            $url = $res.body.NextPageLink
-            $items = ($items | append $res.body.Items)
-            print $url
-        } else {
-            $continue = false
-        }
+    while ($next_url != null) {
+        let rec = (next $next_url)
+        $items = ($items | append $rec.items)
+        $next_url = $rec.next_url
     }
 
-    $items
+    $items | to json | save --force (price-cache json)
+    price-cache json
+}
+
+# module az/price - get price list for all az services as parquet file (~25 MB)
+export def 'as parquet file' [--currency-code: string = 'NOK'] {
+    
+    # ideally, work with dfr only, but there are dfr schema details (savingsPlan, effectiveEndDate, ...)
+    # cheating with converting full json to parquet
+    
+    dfr open (as json file) | dfr to-parquet (price-cache parquet)
 }
 
 const sqlite_t_price = price
@@ -96,20 +95,18 @@ def 'create savings table' [] {
         term: str
     }
 
-    stor create -t $sqlite_t_savings -c $schema_savings    
+    stor create -t $sqlite_t_savings -c $schema_savings
 }
 
-# module az/price - create sqlite tables for azure price list
-export def 'sqlite create tables' [
+def 'sqlite create tables' [
 ] {
 
     # schema overview
     # (http get --allow-errors --full "https://prices.azure.com/api/retail/prices?api-version=2023-01-01-preview").body.Items | each {|r| $r | describe -d | $in.columns} | reduce --fold {} {|it, acc| $acc | merge $it}
 
-    let existing_tables = (stor open | schema | $in.tables | columns)
-
-    if ($existing_tables | all {|e| $e != $sqlite_t_price}) { create price table}
-    if ($existing_tables | all {|e| $e != $sqlite_t_savings}) { create savings table}
+    stor reset
+    create price table
+    create savings table
 }
 
 const savings_plan = savingsPlan
@@ -132,22 +129,19 @@ def 'sqlite insert' [] {
     }
 }
 
-# module az/price - get price list for all az services as sqlite database
-export def 'into sqlite' [
-    --currency-code: string = 'NOK'
-] { 
+# module az/price - get price list for all az services as sqlite database file (~197 MB)
+export def 'as sqlite file' [--currency-code: string = 'NOK'] {
 
-    def next [url: string] {
-        print $url
-        match (http get --allow-errors --full $url) {
-            {headers: _, body: $b, status: 200} => {
-                $b.Items | sqlite insert
-                $b.NextPageLink
-            }
-            _ => { null }
-        }
-    }
-    
+    sqlite create tables
+
     mut next_url = (compile url --currency-code $currency_code)
-    while ($next_url != null) { $next_url = (next $next_url) }
+
+    while ($next_url != null) {
+        let rec: record<next_url: string, items: list<any>> = next $next_url
+        $rec.items | sqlite insert
+        $next_url = $rec.next_url
+    }
+
+    stor export -f (price-cache sqlite)
+    price-cache sqlite
 }
