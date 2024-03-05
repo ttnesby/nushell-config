@@ -51,8 +51,9 @@ export def 'as parquet file' [--currency-code: string = 'NOK'] {
     
     # ideally, work with dfr only, but there are dfr schema details (savingsPlan, effectiveEndDate, ...)
     # cheating with converting full json to parquet
-    
-    dfr open (as json file) | dfr to-parquet (price-cache parquet)
+
+    let price_json = (as json file)    
+    dfr open $price_json | dfr to-parquet (price-cache parquet)
 }
 
 const sqlite_t_price = price
