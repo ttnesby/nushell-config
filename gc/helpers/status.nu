@@ -1,4 +1,4 @@
-# retuns record for logged in status and list of available projects
+# retun record for logged in status and list of available projects
 export def main [] {
     do {gcloud projects list --format=json} | complete
     | match $in {
