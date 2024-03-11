@@ -10,11 +10,11 @@ def wait [
             let waitUrl = ($h.response | where name == location | get 0.value)
             let retryAfter = ($h.response | where name == retry-after | get 0.value) | into int | into duration --unit sec
 
-            print $'estimated cost complection: ($retryAfter) - waiting'
+            #print $'estimated cost complection: ($retryAfter) - waiting'
 
             mut r = $in
             loop {
-                sleep 5sec
+                sleep $retryAfter
                 $r = (http get --allow-errors --full --headers $headers $waitUrl)
                 if $r.status != 202 { break }
             }
@@ -186,9 +186,86 @@ export def "billing periods" [
 
         http get --allow-errors --full --headers $headers $url
         | match $in {
-            {headers: _ ,body: _ ,status: 404} => (do $rec 404 $sub.id [])
-            {headers: _ ,body: $b ,status: 200} => (do $rec 200 $sub.id ($b.value | each {|p| {name: $p.name, start: $p.properties.billingPeriodStartDate, end: $p.properties.billingPeriodEndDate }}))
-            {headers: _ ,body: _ ,status: $s} => (do $rec $s $sub.id [])
+            {headers: _ , body: _ , status: 404} => (do $rec 404 $sub.id [])
+            {headers: _ , body: $b , status: 200} => (
+                do $rec 200 $sub.id ($b.value | each {|p| {name: $p.name, start: $p.properties.billingPeriodStartDate, end: $p.properties.billingPeriodEndDate }})
+            )
+            {headers: _ , body: _ , status: $s} => (do $rec $s $sub.id [])
         }
+    }
+}
+
+# see https://learn.microsoft.com/en-us/rest/api/cost-management/generate-cost-details-report/create-operation?view=rest-cost-management-2023-08-01&tabs=HTTP
+
+# module az/cost - download cost CSV for subscription(s) and related billing period(s)
+#
+# Example:
+# az account list --all --only-show-errors --output json 
+# | from json 
+# | az cost billing periods 
+# | where status == 200 and ($it.billing_periods | length) > 1 and ($it.billing_periods | length) < 4
+# | az cost details
+# 
+export def details [
+    --token(-t): string = ''            # see token-az | token-sp-az
+    --metric(-m): string = ActualCost
+    --chunk_size(-c): int = 3
+] {
+    $in 
+    | where status == 200 
+    | window $chunk_size --stride $chunk_size --remainder
+    | each {|sub_chunk| 
+        $sub_chunk
+        | par-each --keep-order {|s| 
+            $s.billing_periods 
+            | window $chunk_size --stride $chunk_size --remainder
+            | each {|bp_chunk| 
+                $bp_chunk
+                | par-each --keep-order {|p| 
+                    #print $'generate detailed cost for: ($s.id)-($p.name)'
+                    generateDetailedCostReport -s $s.id -p $p -t $token -m $metric 
+                }
+            }
+            | flatten
+        } 
+        | flatten
+    }
+    | flatten
+}
+
+def generateDetailedCostReport [
+    --sub_id(-s): string
+    --periode(-p): record<name:string, start:string, end: string>
+    --token(-t): string 
+    --metric(-m): string = ActualCost
+] {
+    let headers = [Authorization $'(if $token == '' {token} else {$token})' ContentType application/json]
+    let url = $'https://management.azure.com/subscriptions/($sub_id)/providers/Microsoft.CostManagement/generateDetailedCostReport?api-version=2023-08-01'
+    let cacheFile = (cost-cache file -s $sub_id -p $periode.name)
+    let rec = {|
+        status: int, 
+        message: string
+        file: string
+        | 
+        {id: $sub_id, periode: $periode.name, status: $status, message: $message, file: $file}
+    }
+    
+
+    http post --allow-errors --full --headers $headers $url ({billingPeriod: $periode.name, metric: $metric} | to json)
+    | wait --headers $headers
+    | match $in {
+        {headers: $h ,body: $b ,status: 200} => {
+            match ($b.properties.downloadUrl) {
+                null => { do $rec 200 'null downloadUrl' '' }
+                _ => {
+                    http get ($b.properties.downloadUrl) | save --force $cacheFile
+                    do $rec 200 'ok' $cacheFile
+                }
+            }
+        }
+        {headers: _ ,body: _ ,status: 204} => { do $rec 204 'no content' '' }
+        {headers: $h ,body: $b ,status: 422} => { do $rec 422 $b.error.message '' }
+        {headers: $h ,body: $b ,status: 429} => { do $rec 429 $b.error.message '' }
+        {headers: $h ,body: $b ,status:$sc} => { do $rec $sc 'unknown case' '' }
     }
 }

@@ -10,5 +10,5 @@ export def file [
     --subscription (-s): string
     --periode (-p): string
 ] {
-    dir | path join $'($subscription)-($periode).csv'
+    dir | path join $'($subscription)-($periode)-(date now | format date "%Y%m%d-%H%M").csv'
 }
