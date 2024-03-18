@@ -1,7 +1,14 @@
 use ./helpers/cost-cache.nu
-use ./helpers/token.nu 
+use ./helpers/token.nu
 
-# wait for something (202), until completion (200) or another status code
+# convert periode to epoch GMT 
+def "periode to epoch" [
+    --periode_name(-p): string # YYYYmm, e.g. 202403
+] {
+    $periode_name | $in + '01' | date to-timezone GMT | into int
+}
+
+# wait while http status is 202, until another status code
 def wait [
     --headers: list<string>
 ] {
@@ -9,8 +16,6 @@ def wait [
         {headers: $h ,body: _ ,status: 202} => {
             let waitUrl = ($h.response | where name == location | get 0.value)
             let retryAfter = ($h.response | where name == retry-after | get 0.value) | into int | into duration --unit sec
-
-            #print $'estimated cost complection: ($retryAfter) - waiting'
 
             mut r = $in
             loop {
@@ -20,7 +25,7 @@ def wait [
             }
             $r
         }
-            _ => { $in }
+        _ => { $in }
     }
 }
 
@@ -68,7 +73,7 @@ export def main [
                     }
                 }
                 {headers: _ ,body: _ ,status: 204} => {
-                    '' | save --force $cacheFile 
+                    '' | save --force $cacheFile
                     {status: 204, message: 'no content', file: $cacheFile}
                 }
                 {headers: $h ,body: $b ,status: 422} => {
@@ -77,7 +82,7 @@ export def main [
                 {headers: $h ,body: $b ,status: 429} => {
                     {status: 429, message: $b.error.message, file: $cacheFile}
                 }
-                {headers: $h ,body: $b ,status:$sc} => { 
+                {headers: $h ,body: $b ,status:$sc} => {
                     {status: $sc, message: 'unknown case', file: $cacheFile}
                 }
             }
@@ -123,7 +128,7 @@ export def days [
                     }
                 }
                 {headers: _ ,body: _ ,status: 204} => {
-                    '' | save --force $cacheFile 
+                    '' | save --force $cacheFile
                     {status: 204, message: 'no content', file: $cacheFile}
                 }
                 {headers: $h ,body: $b ,status: 422} => {
@@ -132,7 +137,7 @@ export def days [
                 {headers: $h ,body: $b ,status: 429} => {
                     {status: 429, message: $b.error.message, file: $cacheFile}
                 }
-                {headers: $h ,body: $b ,status:$sc} => { 
+                {headers: $h ,body: $b ,status:$sc} => {
                     {status: $sc, message: 'unknown case', file: $cacheFile}
                 }
             }
@@ -146,41 +151,34 @@ export def days [
 # examples:
 #
 # ex1 - get all subscriptions with at least one valid billing periode
-# 
-# az account list --all --only-show-errors --output json 
-# | from json 
-# | az cost billing periods 
+#
+# az cost billing periods
 # | where status == 200 and ($it.billing_periods | length) > 0
 #
 # ex2 - get all subscriptions of invalid type (CSP...)
-# 
-# az account list --all --only-show-errors --output json 
-# | from json 
-# | az cost billing periods 
+#
+# az cost billing periods
 # | where status == 400
 #
 # ex3 - get all NotFound subscriptions (cancelled more than 90 days?)
-# 
-# az account list --all --only-show-errors --output json 
-# | from json 
-# | az cost billing periods 
+#
+#  az cost billing periods
 # | where status == 404
 #
-
-
-
 export def "billing periods" [
     --token(-t): string = '' # see token main|token principal
 ] {
-    $in | par-each --keep-order {|sub| 
+    ^az account list --all --only-show-errors --output json 
+    | from json
+    | par-each --keep-order {|sub|
 
         let headers = [Authorization $'(if $token == '' {token} else {$token})' ContentType application/json]
         let url = $'https://management.azure.com/subscriptions/($sub.id)/providers/Microsoft.Billing/billingPeriods?api-version=2017-04-24-preview'
         let rec = {|
-            status: int, 
-            id: string, 
+            status: int,
+            id: string,
             bp: list<record<name:string, start:string, end: string>>
-            | 
+            |
             {status: $status, id: $id, billing_periods: $bp}
         }
 
@@ -195,39 +193,37 @@ export def "billing periods" [
     }
 }
 
+# module az/cost - get subscriptions having given periode as valid billing periode
+export def "subscriptions for billing periode" [
+    --periode_name(-p): string = ''  # YYYYmm, e.g. 202403
+] {
+    ^az account list --all --only-show-errors --output json 
+    | from json 
+    | billing periods 
+    | where status == 200
+    | par-each {|r| $r.billing_periods | par-each {|bp| {id: $r.id, ...$bp} } }
+    | flatten
+    | where name == $periode_name
+}
+
 # see https://learn.microsoft.com/en-us/rest/api/cost-management/generate-cost-details-report/create-operation?view=rest-cost-management-2023-08-01&tabs=HTTP
 
-# module az/cost - download cost CSV for subscription(s) and related billing period(s)
+# module az/cost - download cost CSV for subscriptions and billing period
 #
 # Example:
-# az account list --all --only-show-errors --output json 
-# | from json 
-# | az cost billing periods 
-# | where status == 200 and ($it.billing_periods | length) > 1 and ($it.billing_periods | length) < 4
+# az cost subbscriptions for billing periode -p 202206
 # | az cost details
-# 
+#
 export def details [
     --token(-t): string = ''            # see token-az | token-sp-az
     --metric(-m): string = ActualCost
-    --chunk_size(-c): int = 3
+    --chunk_size(-c): int = 1
 ] {
-    $in 
-    | where status == 200 
+    $in
     | window $chunk_size --stride $chunk_size --remainder
-    | each {|sub_chunk| 
+    | each {|sub_chunk|
         $sub_chunk
-        | par-each --keep-order {|s| 
-            $s.billing_periods 
-            | window $chunk_size --stride $chunk_size --remainder
-            | each {|bp_chunk| 
-                $bp_chunk
-                | par-each --keep-order {|p| 
-                    #print $'generate detailed cost for: ($s.id)-($p.name)'
-                    generateDetailedCostReport -s $s.id -p $p -t $token -m $metric 
-                }
-            }
-            | flatten
-        } 
+        | par-each {|s| generateDetailedCostReport -s $s.id -p {...($s | reject id)} -t $token -m $metric } 
         | flatten
     }
     | flatten
@@ -236,20 +232,21 @@ export def details [
 def generateDetailedCostReport [
     --sub_id(-s): string
     --periode(-p): record<name:string, start:string, end: string>
-    --token(-t): string 
+    --token(-t): string
     --metric(-m): string = ActualCost
 ] {
     let headers = [Authorization $'(if $token == '' {token} else {$token})' ContentType application/json]
     let url = $'https://management.azure.com/subscriptions/($sub_id)/providers/Microsoft.CostManagement/generateDetailedCostReport?api-version=2023-08-01'
     let cacheFile = (cost-cache file -s $sub_id -p $periode.name)
     let rec = {|
-        status: int, 
+        status: int,
         message: string
         file: string
-        | 
+        |
         {id: $sub_id, periode: $periode.name, status: $status, message: $message, file: $file}
     }
-    
+
+    if ($cacheFile | path exists) { return (do $rec 0 'local cache' $cacheFile) }
 
     http post --allow-errors --full --headers $headers $url ({billingPeriod: $periode.name, metric: $metric} | to json)
     | wait --headers $headers
@@ -263,7 +260,7 @@ def generateDetailedCostReport [
                 }
             }
         }
-        {headers: _ ,body: _ ,status: 204} => { do $rec 204 'no content' '' }
+        {headers: _ ,body: _ ,status: 204} => { do $rec 204 'no content' '' ''}
         {headers: $h ,body: $b ,status: 422} => { do $rec 422 $b.error.message '' }
         {headers: $h ,body: $b ,status: 429} => { do $rec 429 $b.error.message '' }
         {headers: $h ,body: $b ,status:$sc} => { do $rec $sc 'unknown case' '' }
