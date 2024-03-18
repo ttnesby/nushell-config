@@ -5,7 +5,8 @@ use ./helpers/token.nu
 def "periode to epoch" [
     --periode_name(-p): string # YYYYmm, e.g. 202403
 ] {
-    $periode_name | $in + '01' | date to-timezone GMT | into int
+    # 
+    $periode_name | $in + '03' | date to-timezone UTC | into int
 }
 
 # wait while http status is 202, until another status code
@@ -149,4 +150,51 @@ def generateDetailedCostReport [
         {headers: $h ,body: $b ,status: 429} => { do $rec 429 $b.error.message '' }
         {headers: $h ,body: $b ,status:$sc} => { do $rec $sc 'unknown case' '' }
     }
+}
+
+# fixed data types for certain columns across all csv files in order to do successful dfr append
+def "convert types" [] {
+    let df = $in
+
+    let date = $df | dfr get Date | dfr as-date '%m/%d/%Y'
+    let bpStart = $df | dfr get BillingPeriodStartDate | dfr as-date '%m/%d/%Y'
+    let bpEnd = $df | dfr get BillingPeriodEndDate | dfr as-date '%m/%d/%Y'
+
+    $df
+    | dfr drop Date
+    | dfr with-column $date --name Date
+    | dfr cast f64 Quantity
+    | dfr cast f64 EffectivePrice
+    | dfr cast f64 CostInBillingCurrency
+    | dfr cast f64 UnitPrice
+    | dfr cast str BillingAccountId
+    | dfr drop BillingPeriodStartDate
+    | dfr with-column $bpStart --name BillingPeriodStartDate 
+    | dfr drop BillingPeriodEndDate
+    | dfr with-column $bpEnd --name BillingPeriodEndDate 
+    | dfr cast str BillingProfileId
+    | dfr cast f64 PayGPrice
+}
+
+# module az/cost - reduce all cost csv files in a periode folder into a parquet file
+export def "to parquet" [
+    --periode_name(-p): string
+] {
+    let cost_folder = (cost-cache dir -p $periode_name)
+    let parquet_file = ($cost_folder | path join $'($periode_name).parquet') 
+    
+    let cost_files = glob ($cost_folder | path join '*.csv')
+    if $cost_files == [] {return false}
+
+    let init = (dfr open ($cost_files | get 0) | convert types)
+
+    $cost_files
+    | reverse
+    | drop
+    | reduce --fold $init {|f, acc| 
+        let file_cost = (dfr open $f | convert types) 
+        $acc | dfr append $file_cost --col} 
+    | dfr to-parquet $parquet_file
+
+    $parquet_file | path exists
 }
