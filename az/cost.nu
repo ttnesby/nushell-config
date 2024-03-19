@@ -1,14 +1,6 @@
 use ./helpers/cost-cache.nu
 use ./helpers/token.nu
 
-# convert periode to epoch GMT
-def "periode to epoch" [
-    --periode_name(-p): string # YYYYmm, e.g. 202403
-] {
-    #
-    $periode_name | $in + '03' | date to-timezone UTC | into int
-}
-
 # wait while http status is 202, until another status code
 def wait [
     --headers: list<string>
@@ -27,6 +19,19 @@ def wait [
             $r
         }
         _ => { $in }
+    }
+}
+
+# module az/cost - download cost data for subscriptions with valid billing period, assembled into one parquet file
+export def main [
+    --periode_name(-p): string
+] {
+    subscriptions billing periode -p $periode_name
+    | details
+    | all {|r| $r.status == 200}
+    | match $in {
+        true => { to parquet -p $periode_name }
+        false => { false }
     }
 }
 
@@ -79,7 +84,7 @@ export def "billing periods" [
 }
 
 # module az/cost - get subscriptions having given periode as valid billing periode
-export def "subscriptions for billing periode" [
+export def "subscriptions billing periode" [
     --periode_name(-p): string = ''  # YYYYmm, e.g. 202403
 ] {
     ^az account list --all --only-show-errors --output json
