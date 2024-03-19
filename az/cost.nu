@@ -1,11 +1,11 @@
 use ./helpers/cost-cache.nu
 use ./helpers/token.nu
 
-# convert periode to epoch GMT 
+# convert periode to epoch GMT
 def "periode to epoch" [
     --periode_name(-p): string # YYYYmm, e.g. 202403
 ] {
-    # 
+    #
     $periode_name | $in + '03' | date to-timezone UTC | into int
 }
 
@@ -53,7 +53,7 @@ def wait [
 export def "billing periods" [
     --token(-t): string = '' # see token main|token principal
 ] {
-    ^az account list --all --only-show-errors --output json 
+    ^az account list --all --only-show-errors --output json
     | from json
     | par-each --keep-order {|sub|
 
@@ -82,9 +82,9 @@ export def "billing periods" [
 export def "subscriptions for billing periode" [
     --periode_name(-p): string = ''  # YYYYmm, e.g. 202403
 ] {
-    ^az account list --all --only-show-errors --output json 
-    | from json 
-    | billing periods 
+    ^az account list --all --only-show-errors --output json
+    | from json
+    | billing periods
     | where status == 200
     | par-each {|r| $r.billing_periods | par-each {|bp| {id: $r.id, ...$bp} } }
     | flatten
@@ -108,7 +108,7 @@ export def details [
     | window $chunk_size --stride $chunk_size --remainder
     | each {|sub_chunk|
         $sub_chunk
-        | par-each {|s| generateDetailedCostReport -s $s.id -p {...($s | reject id)} -t $token -m $metric } 
+        | par-each {|s| generateDetailedCostReport -s $s.id -p {...($s | reject id)} -t $token -m $metric }
         | flatten
     }
     | flatten
@@ -153,27 +153,27 @@ def generateDetailedCostReport [
 }
 
 # fixed data types for certain columns across all csv files in order to do successful dfr append
-def "convert types" [] {
+def compliance [] {
     let df = $in
 
-    let date = $df | dfr get Date | dfr as-date '%m/%d/%Y'
-    let bpStart = $df | dfr get BillingPeriodStartDate | dfr as-date '%m/%d/%Y'
-    let bpEnd = $df | dfr get BillingPeriodEndDate | dfr as-date '%m/%d/%Y'
+    let to_date = {|dframe, col_name|
+        $dframe
+        | dfr drop $col_name
+        | dfr with-column ($df | dfr get $col_name | dfr as-date '%m/%d/%Y') --name $col_name
+    }
 
     $df
-    | dfr drop Date
-    | dfr with-column $date --name Date
+    | (do $to_date $in Date)
     | dfr cast f64 Quantity
     | dfr cast f64 EffectivePrice
     | dfr cast f64 CostInBillingCurrency
     | dfr cast f64 UnitPrice
     | dfr cast str BillingAccountId
-    | dfr drop BillingPeriodStartDate
-    | dfr with-column $bpStart --name BillingPeriodStartDate 
-    | dfr drop BillingPeriodEndDate
-    | dfr with-column $bpEnd --name BillingPeriodEndDate 
+    | (do $to_date $in BillingPeriodStartDate)
+    | (do $to_date $in BillingPeriodEndDate)
     | dfr cast str BillingProfileId
     | dfr cast f64 PayGPrice
+    | dfr with-column ((dfr col CostInBillingCurrency) * 1.25 | dfr as CostWithMVA)
 }
 
 # module az/cost - reduce all cost csv files in a periode folder into a parquet file
@@ -181,19 +181,17 @@ export def "to parquet" [
     --periode_name(-p): string
 ] {
     let cost_folder = (cost-cache dir -p $periode_name)
-    let parquet_file = ($cost_folder | path join $'($periode_name).parquet') 
-    
+    let parquet_file = ($cost_folder | path join $'($periode_name).parquet')
+
     let cost_files = glob ($cost_folder | path join '*.csv')
     if $cost_files == [] {return false}
 
-    let init = (dfr open ($cost_files | get 0) | convert types)
+    let init = (dfr open ($cost_files | get 0) | compliance)
 
     $cost_files
     | reverse
     | drop
-    | reduce --fold $init {|f, acc| 
-        let file_cost = (dfr open $f | convert types) 
-        $acc | dfr append $file_cost --col} 
+    | reduce --fold $init {|f, acc| $acc | dfr append (dfr open $f | compliance) --col }
     | dfr to-parquet $parquet_file
 
     $parquet_file | path exists
