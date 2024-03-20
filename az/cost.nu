@@ -25,13 +25,34 @@ def wait [
 # module az/cost - download cost data for subscriptions with valid billing period, assembled into one parquet file
 export def main [
     --periode_name(-p): string
+    --chunk_size(-c): int = 8
 ] {
-    subscriptions billing periode -p $periode_name
-    | details
-    | all {|r| $r.status == 200}
-    | match $in {
-        true => { to parquet -p $periode_name }
-        false => { false }
+    let rec = {|s: bool, m:string, f:string | 
+        {periode: $periode_name, success: $s, message: $m, parquet_file: $f} 
+    }
+
+    let subs_with_periode = subscriptions billing periode -p $periode_name
+    
+    mut cost_csvs = ($subs_with_periode | download csv -c $chunk_size)
+
+    loop {
+
+        if ($cost_csvs | any {|r| $r.status not-in [0, 200, 204, 429]}) {
+            return (do $rec false "failed to download all cost reports" '')
+        }
+
+        if ($cost_csvs | any {|r| $r.status in [429]}) {
+            let subs_with_429 = ($cost_csvs | where status == 429)
+            print $"Retry ($subs_with_429 | length) subscriptions with status 429"
+            $cost_csvs = ($subs_with_429 | download csv -c $chunk_size )
+        }
+
+        if ($cost_csvs | all {|r| $r.status in [0, 200, 204]}) { break }
+    }
+
+    match (periode as parquet -p $periode_name) {
+        {status: true, periode: _, parguet_file: $f} => {do $rec true '' $f}
+        _ => {do $rec false "failed to assemble csv's into parquet file" ''}
     }
 }
 
@@ -58,19 +79,21 @@ export def main [
 export def "billing periods" [
     --token(-t): string = '' # see token main|token principal
 ] {
+    let rec = {|
+        status: int,
+        id: string,
+        bp: list<record<name:string, start:string, end: string>>
+        |
+        {status: $status, id: $id, billing_periods: $bp}
+    }
+
     ^az account list --all --only-show-errors --output json
     | from json
-    | par-each --keep-order {|sub|
+    | do {|t| print $'Found ($t | length) subscriptions'; $t } $in
+    | par-each {|sub|
 
         let headers = [Authorization $'(if $token == '' {token} else {$token})' ContentType application/json]
         let url = $'https://management.azure.com/subscriptions/($sub.id)/providers/Microsoft.Billing/billingPeriods?api-version=2017-04-24-preview'
-        let rec = {|
-            status: int,
-            id: string,
-            bp: list<record<name:string, start:string, end: string>>
-            |
-            {status: $status, id: $id, billing_periods: $bp}
-        }
 
         http get --allow-errors --full --headers $headers $url
         | match $in {
@@ -87,13 +110,15 @@ export def "billing periods" [
 export def "subscriptions billing periode" [
     --periode_name(-p): string = ''  # YYYYmm, e.g. 202403
 ] {
+    let rec = {|id:string, p:record<name:string, start:string, end: string> | {id: $id, ...$p}}
+
     ^az account list --all --only-show-errors --output json
     | from json
     | billing periods
     | where status == 200
-    | par-each {|r| $r.billing_periods | par-each {|bp| {id: $r.id, ...$bp} } }
+    | par-each {|r| $r.billing_periods | where name == $periode_name | par-each {|bp| do $rec $r.id $bp} } 
     | flatten
-    | where name == $periode_name
+    | do {|t| print $'Found ($t | length) subscriptions for periode ($periode_name)'; $t } $in
 }
 
 # see https://learn.microsoft.com/en-us/rest/api/cost-management/generate-cost-details-report/create-operation?view=rest-cost-management-2023-08-01&tabs=HTTP
@@ -101,17 +126,24 @@ export def "subscriptions billing periode" [
 # module az/cost - download cost CSV for subscriptions and billing period
 #
 # Example:
-# az cost subbscriptions for billing periode -p 202206
+# az cost subbscriptions billing periode -p 202206
 # | az cost details
 #
-export def details [
+export def "download csv" [
     --token(-t): string = ''            # see token-az | token-sp-az
     --metric(-m): string = ActualCost
     --chunk_size(-c): int = 1
 ] {
-    $in
+    let subs_to_process = $in
+    let no_to_process = ($subs_to_process | length) 
+
+    print $"Prepare download of ($no_to_process) CSVs"
+
+    $subs_to_process
     | window $chunk_size --stride $chunk_size --remainder
     | each {|sub_chunk|
+        print $"Download chunk of ($sub_chunk | length) CSVs"
+
         $sub_chunk
         | par-each {|s| generateDetailedCostReport -s $s.id -p {...($s | reject id)} -t $token -m $metric }
         | flatten
@@ -125,16 +157,13 @@ def generateDetailedCostReport [
     --token(-t): string
     --metric(-m): string = ActualCost
 ] {
+    let rec = {|s: int, m: string, f: string |
+        {id: $sub_id, name:$periode.name, start: $periode.start, end: $periode.end status: $s, message: $m, file: $f}
+    }
+
     let headers = [Authorization $'(if $token == '' {token} else {$token})' ContentType application/json]
     let url = $'https://management.azure.com/subscriptions/($sub_id)/providers/Microsoft.CostManagement/generateDetailedCostReport?api-version=2023-08-01'
     let cacheFile = (cost-cache file -s $sub_id -p $periode.name)
-    let rec = {|
-        status: int,
-        message: string
-        file: string
-        |
-        {id: $sub_id, periode: $periode.name, status: $status, message: $message, file: $file}
-    }
 
     if ($cacheFile | path exists) { return (do $rec 0 'local cache' $cacheFile) }
 
@@ -143,14 +172,20 @@ def generateDetailedCostReport [
     | match $in {
         {headers: $h ,body: $b ,status: 200} => {
             match ($b.properties.downloadUrl) {
-                null => { do $rec 200 'null downloadUrl' '' }
+                null => {
+                    '' | save --force $cacheFile 
+                    do $rec 200 'null downloadUrl' $cacheFile 
+                }
                 _ => {
                     http get ($b.properties.downloadUrl) | save --force $cacheFile
                     do $rec 200 'ok' $cacheFile
                 }
             }
         }
-        {headers: _ ,body: _ ,status: 204} => { do $rec 204 'no content' '' ''}
+        {headers: _ ,body: _ ,status: 204} => { 
+            '' | save --force $cacheFile 
+            do $rec 204 'no content' $cacheFile 
+        }
         {headers: $h ,body: $b ,status: 422} => { do $rec 422 $b.error.message '' }
         {headers: $h ,body: $b ,status: 429} => { do $rec 429 $b.error.message '' }
         {headers: $h ,body: $b ,status:$sc} => { do $rec $sc 'unknown case' '' }
@@ -182,14 +217,16 @@ def compliance [] {
 }
 
 # module az/cost - reduce all cost csv files in a periode folder into a parquet file
-export def "to parquet" [
+export def "periode as parquet" [
     --periode_name(-p): string
 ] {
+    let rec = {|s:bool, p:string, f:string| {status: $s, periode: $p, parguet_file: $f}}
+
     let cost_folder = (cost-cache dir -p $periode_name)
     let parquet_file = ($cost_folder | path join $'($periode_name).parquet')
 
-    let cost_files = glob ($cost_folder | path join '*.csv')
-    if $cost_files == [] {return false}
+    let cost_files = (ls ($cost_folder | path join '*.csv' | into glob) | where size > (0 | into filesize) | get name)
+    if $cost_files == [] {return (do $rec false $periode_name '')}
 
     let init = (dfr open ($cost_files | get 0) | compliance)
 
@@ -199,5 +236,5 @@ export def "to parquet" [
     | reduce --fold $init {|f, acc| $acc | dfr append (dfr open $f | compliance) --col }
     | dfr to-parquet $parquet_file
 
-    $parquet_file | path exists
+    do $rec ($parquet_file | path exists) $periode_name $parquet_file
 }
