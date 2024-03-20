@@ -32,6 +32,8 @@ export def main [
     }
 
     let subs_with_periode = subscriptions billing periode -p $periode_name
+
+    if ($subs_with_periode == []) {return (do $rec false $"No subscriptions for periode ($periode_name)" '')}
     
     mut cost_csvs = ($subs_with_periode | download csv -c $chunk_size)
 
