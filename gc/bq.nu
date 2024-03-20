@@ -13,7 +13,7 @@ const price_table = $'($dataset).price_list'
 export def dataset [
     --delete
 ] {
-    let exists = (^bq ls --format=json azure_cost_management | from json | where type == TABLE | $in.tableReference | each {|r| $r.datasetId})
+    let exists = ($dataset in (^bq ls --format=json azure_cost_management | from json | where type == TABLE | $in.tableReference | each {|r| $r.datasetId}))
 
     if (not $delete) {
         if $exists {return $'($dataset) already exists'}
