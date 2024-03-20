@@ -141,10 +141,11 @@ export def "download csv" [
 
     $subs_to_process
     | window $chunk_size --stride $chunk_size --remainder
+    | enumerate
     | each {|sub_chunk|
-        print $"Download chunk of ($sub_chunk | length) CSVs"
+        print $"Download chunk of ($sub_chunk.item | length) CSVs [($sub_chunk.index * $chunk_size)/($no_to_process)]"
 
-        $sub_chunk
+        $sub_chunk.item
         | par-each {|s| generateDetailedCostReport -s $s.id -p {...($s | reject id)} -t $token -m $metric }
         | flatten
     }
