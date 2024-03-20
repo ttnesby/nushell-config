@@ -1,4 +1,4 @@
-export module ./cost.nu
+export module ./bq.nu
 export module ./prj.nu
 
 use ../arcbrowser

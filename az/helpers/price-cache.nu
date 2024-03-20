@@ -1,4 +1,4 @@
-def dir [] {
+export def dir [] {
     let cacheDir = ('~/.azprice' | path expand)
     if (not ($cacheDir | path exists)) { mkdir $cacheDir }
     $cacheDir
