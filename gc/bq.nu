@@ -13,7 +13,18 @@ const price_table = $'($dataset).price_list'
 export def dataset [
     --delete
 ] {
-    let exists = ($dataset in (^bq ls --format=json azure_cost_management | from json | where type == TABLE | $in.tableReference | each {|r| $r.datasetId}))
+    let sets = (
+        match (do {^bq ls --format=json} | complete) {
+            {stdout: $out, stderr:_, exit_code: 0} if ($out | str length ) == 0 => {[]}
+            {stdout: $out, stderr:_, exit_code: 0} if ($out | str length ) > 0 => {
+                $out
+                | from json
+                | each {|r| $r.datasetReference.datasetId}
+            }
+            _ => { print -e "couldn't get dataset information"; []}
+        }
+    )
+    let exists = ($dataset in $sets)
 
     if (not $delete) {
         if $exists {return $'($dataset) already exists'}
@@ -167,12 +178,12 @@ export def "load cost" [
     --periode_name(-p): string
 ] {
     let parquet_file = (cost-cache dir -p $periode_name | path join $'($periode_name).parquet' | path expand)
-    let partition = $'($cost_table)$($periode_name)01' 
+    let partition = $'($cost_table)$($periode_name)01'
 
     if (not ($parquet_file | path exists)) {
         print -e $"($parquet_file) doesn't exist"
         return false
-    }    
+    }
 
     # delete relevant partition
     if (do {^bq rm --table --force $partition}|complete).exit_code != 0 {
@@ -191,7 +202,7 @@ export def "load price" [] {
     if (not ($parquet_file | path exists)) {
         print -e $"($parquet_file) doesn't exist"
         return false
-    }    
+    }
 
     # delete relevant partition
     if (do {^bq rm --table --force $price_table}|complete).exit_code != 0 {
@@ -205,9 +216,15 @@ export def "load price" [] {
 
 # module gc/cost - list all tables in relevant dataset
 export def "dataset tables" [] {
-    ^bq ls --format=json $dataset
-    | from json
-    | where type == TABLE
-    | $in.tableReference
-    | each {|r| $'($r.datasetId).($r.tableId)'}
+    match (do {^bq ls --format=json $dataset} | complete) {
+        {stdout: $out, stderr:_, exit_code: 0} if ($out | str length ) == 0 => {[]}
+        {stdout: $out, stderr:_, exit_code: 0} if ($out | str length ) > 0 => {
+            $out
+            | from json
+            | where type == TABLE
+            | $in.tableReference
+            | each {|r| $'($r.datasetId).($r.tableId)'}
+        }
+        _ => { print -e "couldn't get dataset information"; []}
+    }
 }
