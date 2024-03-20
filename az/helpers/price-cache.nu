@@ -4,9 +4,8 @@ def dir [] {
     $cacheDir
 }
 
-def name [] {$'price-(date now | format date "%Y%m%d-%H%M")'}
+const file_name = 'price_list'
 
 # price files
-export def sqlite [] { dir | path join $'(name).sqlite'}
-export def json [] { dir | path join $'(name).json'}
-export def parquet [] { dir | path join $'(name).parquet'}
+export def json [] { dir | path join $'($file_name).json' | path expand}
+export def parquet [] { dir | path join $'($file_name).parquet' | path expand}
