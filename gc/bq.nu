@@ -1,7 +1,7 @@
 use ../az/helpers/cost-cache.nu
 use ../az/helpers/price-cache.nu
 
-const dataset = 'azure_cost_management'
+const dataset = 'azure_cost_data'
 
 const cost_schema = 'cost_schema'
 const cost_table = $'($dataset).subscriptions'
