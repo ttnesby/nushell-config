@@ -9,40 +9,44 @@ const cost_table = $'($dataset).subscriptions'
 const price_schema = 'price_schema'
 const price_table = $'($dataset).price_list'
 
+export def main [
+    --delete
+] {
+    if not $delete {
+        dataset
+        schema price
+        schema cost -p 202401
+        table -t $cost_table
+        load price # will delete and create table
+    } else {
+        table -t $cost_table --delete
+        table -t $price_table --delete
+        dataset --delete
+    }
+} 
+
 # module gc/cost - create/delete the dataset
 export def dataset [
     --delete
 ] {
-    let sets = (
-        match (do {^bq ls --format=json} | complete) {
-            {stdout: $out, stderr:_, exit_code: 0} if ($out | str length ) == 0 => {[]}
-            {stdout: $out, stderr:_, exit_code: 0} if ($out | str length ) > 0 => {
-                $out
-                | from json
-                | each {|r| $r.datasetReference.datasetId}
-            }
-            _ => { print -e "couldn't get dataset information"; []}
-        }
-    )
-    let exists = ($dataset in $sets)
+    let exists = ($dataset in (project datasets))
+
+    if (not $delete and $exists) { return (print $'($dataset) already exists'; true) }
+    if ($delete and not $exists) { return (print $"($dataset) doesn't exist, nothing to delete"; true) }
 
     if (not $delete) {
-        if $exists {return $'($dataset) already exists'}
-
         do {^bq mk --dataset $dataset}
         | complete
         | match $in {
-            {stdout: _, stderr: _, exit_code: 0} => {print $'($dataset) has been created'}
-            {stdout: _, stderr: $err, exit_code: 1} => {print -e $'could not create ($dataset) - ($err)'}
+            {stdout: _, stderr: _, exit_code: 0} => {print $'($dataset) has been created'; true}
+            {stdout: _, stderr: $err, exit_code: 1} => {print -e $'could not create ($dataset) - ($err)'; false}
         }
     } else {
-        if (not $exists) {return $"($dataset) doesn't exist, nothing to delete"}
-
         do {^bq rm --dataset --force $dataset}
         | complete
         | match $in {
-            {stdout: _, stderr: _, exit_code: 0} => {print $'($dataset) has been deleted'}
-            {stdout: _, stderr: $err, exit_code: 1} => {print -e $'could not delete ($dataset) - ($err)'}
+            {stdout: _, stderr: _, exit_code: 0} => {print $'($dataset) has been deleted'; true}
+            {stdout: _, stderr: $err, exit_code: 1} => {print -e $'could not delete ($dataset) - ($err)'; false}
         }
     }
 }
@@ -70,7 +74,7 @@ export def "schema cost" [
     | complete
     | match $in {
         {stdout: $stdout, stderr: _, exit_code: 0} => {
-            ^bq rm --table --force $table_name
+            do {^bq rm --table --force $table_name} | complete
             $stdout | from json | $in.schema.fields | to json
         }
         {stdout: _, stderr: $err, exit_code: 1} => {
@@ -104,7 +108,7 @@ export def "schema price" [] {
     | complete
     | match $in {
         {stdout: $stdout, stderr: _, exit_code: 0} => {
-            ^bq rm --table --force $table_name
+            do {^bq rm --table --force $table_name} | complete
             $stdout | from json | $in.schema.fields | to json
         }
         {stdout: _, stderr: $err, exit_code: 1} => {
@@ -117,58 +121,43 @@ export def "schema price" [] {
     $schema_file
 }
 
-# module gc/cost - create/delete the cost table for subscriptions
-export def "table cost" [
+# module gc/cost - create/delete price list table or cost table for subscriptions
+export def table [
+    --table_name(-t): string
     --delete
 ] {
-    let schema_file = (cost-cache root | path join $'($cost_schema).json' | path expand)
-    let table_exists = ($cost_table in (dataset tables))
+    let schema_file = (
+        if $table_name == $cost_table {
+            cost-cache root | path join $'($cost_schema).json' | path expand
+        } else {
+            price-cache dir | path join $'($price_schema).json' | path expand
+        }
+    )
+    let table_exists = ($table_name in (dataset tables))
+
+    if (not $delete and $table_exists) {return (print $'($table_name) already exists'; true)}
+    if ($delete and not $table_exists) {return (print $"($table_name) doesn't exist, nothing to delete"; true)}
 
     if (not $delete) {
-        if $table_exists {return $'($cost_table) already exists'}
-
-        do {^bq mk --table --schema $schema_file --time_partitioning_field BillingPeriodStartDate --time_partitioning_type DAY $cost_table}
+        let creation = (
+            if $table_name == $cost_table {
+                {|| ^bq mk --table --schema $schema_file --time_partitioning_field BillingPeriodStartDate --time_partitioning_type DAY $cost_table}
+            } else {
+                {|| ^bq mk --table --schema $schema_file $price_table}
+            }
+        )
+        do $creation
         | complete
         | match $in {
-            {stdout: _, stderr: _, exit_code: 0} => {print $'($cost_table) has been created'}
-            {stdout: _, stderr: $err, exit_code: 1} => {print -e $'could not create ($cost_table) - ($err)'}
+            {stdout: _, stderr: _, exit_code: 0} => {print $'($table_name) has been created'; true}
+            {stdout: _, stderr: $err, exit_code: 1} => {print -e $'could not create ($table_name) - ($err)'; false}
         }
     } else {
-        if (not $table_exists) {return $"($cost_table) doesn't exist, nothing to delete"}
-
-        do {^bq rm --table --force $cost_table}
+        do {^bq rm --table --force $table_name}
         | complete
         | match $in {
-            {stdout: _, stderr: _, exit_code: 0} => {print $'($cost_table) has been deleted'}
-            {stdout: _, stderr: $err, exit_code: 1} => {print -e $'could not delete ($cost_table) - ($err)'}
-        }
-    }
-}
-
-# module gc/cost - create/delete the price table
-export def "table price" [
-    --delete
-] {
-    let schema_file = (price-cache dir | path join $'($price_schema).json' | path expand)
-    let table_exists = ($price_table in (dataset tables))
-
-    if (not $delete) {
-        if $table_exists {return $'($price_table) already exists'}
-
-        do {^bq mk --table --schema $schema_file $price_table}
-        | complete
-        | match $in {
-            {stdout: _, stderr: _, exit_code: 0} => {print $'($price_table) has been created'}
-            {stdout: _, stderr: $err, exit_code: 1} => {print -e $'could not create ($price_table) - ($err)'}
-        }
-    } else {
-        if (not $table_exists) {return $"($price_table) doesn't exist, nothing to delete"}
-
-        do {^bq rm --table --force $price_table}
-        | complete
-        | match $in {
-            {stdout: _, stderr: _, exit_code: 0} => {print $'($price_table) has been deleted'}
-            {stdout: _, stderr: $err, exit_code: 1} => {print -e $'could not delete ($price_table) - ($err)'}
+            {stdout: _, stderr: _, exit_code: 0} => {print $'($table_name) has been deleted'; true}
+            {stdout: _, stderr: $err, exit_code: 1} => {print -e $'could not delete ($table_name) - ($err)'; false}
         }
     }
 }
@@ -204,14 +193,13 @@ export def "load price" [] {
         return false
     }
 
-    # delete relevant partition
-    if (do {^bq rm --table --force $price_table}|complete).exit_code != 0 {
-        print -e $'Cannot delete table ($price_table)'
-        return false
+    if ((table -t $price_table --delete) and (table -t $price_table)) {
+        if (do { ^bq load --source_format=PARQUET $price_table $parquet_file } | complete).exit_code == 0 {
+            print "price list has been loaded"; true
+        }
+    } else {
+        print "couldn't load price list"; false
     }
-
-    # load new data
-    (do { ^bq load --source_format=PARQUET $price_table $parquet_file } | complete).exit_code == 0
 }
 
 # module gc/cost - list all tables in relevant dataset
@@ -224,6 +212,19 @@ export def "dataset tables" [] {
             | where type == TABLE
             | $in.tableReference
             | each {|r| $'($r.datasetId).($r.tableId)'}
+        }
+        _ => { print -e "couldn't get dataset information"; []}
+    }
+}
+
+# module gc/cost - list all datasets in relevant project
+export def "project datasets" [] {
+    match (do {^bq ls --format=json} | complete) {
+        {stdout: $out, stderr:_, exit_code: 0} if ($out | str length ) == 0 => {[]}
+        {stdout: $out, stderr:_, exit_code: 0} if ($out | str length ) > 0 => {
+            $out
+            | from json
+            | each {|r| $r.datasetReference.datasetId}
         }
         _ => { print -e "couldn't get dataset information"; []}
     }
