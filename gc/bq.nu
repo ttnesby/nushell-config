@@ -9,6 +9,7 @@ const cost_table = $'($dataset).subscriptions'
 const price_schema = 'price_schema'
 const price_table = $'($dataset).price_list'
 
+# module gc/cost - create/delete relevant price/cost data
 export def main [
     --delete
 ] {
@@ -18,6 +19,13 @@ export def main [
         schema cost -p 202401
         table -t $cost_table
         load price # will delete and create table
+
+        # load all available cost
+        ls (cost-cache root | path join '**' | path expand | into glob) 
+        | get name 
+        | each {|d| $d | path split | last} 
+        | par-each {|p| load cost -p $p} 
+        | all {|e| $e}
     } else {
         table -t $cost_table --delete
         table -t $price_table --delete
@@ -181,7 +189,11 @@ export def "load cost" [
     }
 
     # load new data
-    (do { ^bq load --source_format=PARQUET $cost_table $parquet_file } | complete).exit_code == 0
+    if (do { ^bq load --source_format=PARQUET $cost_table $parquet_file } | complete).exit_code == 0 {
+        print $"cost periode ($periode_name) has been loaded"; true
+    } else {
+        print -e $"couldn't load cost periode ($periode_name)"; false
+    }
 }
 
 # module gc/cost - load price list
@@ -198,7 +210,7 @@ export def "load price" [] {
             print "price list has been loaded"; true
         }
     } else {
-        print "couldn't load price list"; false
+        print -e "couldn't load price list"; false
     }
 }
 
