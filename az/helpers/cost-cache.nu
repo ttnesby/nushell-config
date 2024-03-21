@@ -19,5 +19,5 @@ export def file [
     --subscription (-s): string # subscription id
     --periode_name (-p): string # YYYYmm, e.g. 202403
 ] {
-    dir -p $periode_name | path join $'($periode_name)_($subscription)_(date now | format date "%Y%m%d").csv'
+    dir -p $periode_name | path join $'($periode_name)_($subscription).csv'
 }
