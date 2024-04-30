@@ -17,7 +17,13 @@ def cco [] {
 def lsg [] = { ls -as | sort-by type name -i | grid -c }
 
 # gen - config files to vs code
-alias cfg = code -n ...[$nu.config-path, $nu.env-path, ([($env.HOME),'.zshrc'] | path join)]
+alias cfg = code -n ...[
+    $nu.config-path, 
+    $nu.env-path, 
+    ([($env.HOME),'.zshrc'] | path join),
+    ([($env.HOME),'.config','atuin','config.toml'] | path join), 
+    ([($env.HOME),'.local','share','atuin','init2.nu'] | path join), 
+    ]
 
 # gen - overlay list
 alias ol = overlay list
