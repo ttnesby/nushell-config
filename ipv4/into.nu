@@ -1,3 +1,5 @@
+use err
+
 def validate [] {
     let ipv4 = ($in | parse '{a}.{b}.{c}.{d}')
     let span = (metadata $ipv4).span
@@ -32,7 +34,7 @@ export def bits [] {
         $it
         | validate
         | values
-        | each {|s| $s | into int | into bits | str substring 0..8}
+        | each {|s| $s | into int | into bits | str substring 0..7}
         | str join
     }
 }

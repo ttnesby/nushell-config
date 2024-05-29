@@ -1,4 +1,5 @@
 use std repeat
+use err
 
 def validateBits [] {
     let bits = ($in | split chars)
@@ -45,7 +46,7 @@ export def int [] {
             ('0' | repeat (32 - ($s | str length)) | str join) + $s
         }
         $s if ($s | str length) > 32 => {
-            $s | str reverse | str substring 0..32
+            $s | str reverse | str substring 0..31
         }
         _ => $in
         }

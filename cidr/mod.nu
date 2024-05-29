@@ -2,6 +2,7 @@ export module ./from.nu
 
 use std repeat
 use ../ipv4
+use err
 
 def validate [] {
     let cidr = ($in | parse '{ipv4}/{subnet}')
@@ -23,7 +24,7 @@ def info [] {
     let rec: record<ipv4: string, subnet: string> = $in
 
     let subnetSize = $rec.subnet | into int
-    let ipAsSubnetSizeBits = $rec.ipv4 | ipv4 into bits | str substring 0..$subnetSize
+    let ipAsSubnetSizeBits = $rec.ipv4 | ipv4 into bits | str substring 0..($subnetSize - 1)
 
     let networkBits = '1' | repeat $subnetSize | str join
     let noHostsBits = '0' | repeat (32 - $subnetSize) | str join
