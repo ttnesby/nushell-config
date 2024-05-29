@@ -41,6 +41,7 @@ export def list [
     | flatten # networks
     | flatten # cidrs' in a network
     | sort-by subscription vnetName
+    | where {|r| not ($r.cidr | str contains ':')} # quick, dirty and lazy ipV6 filter...
     | if $master != [] { $in | details --master $master } else { $in }
 }
 
@@ -65,7 +66,7 @@ export def status [
         | sort-by end                                       # sort by end value
         | window 2                                          # pair-wise iteration of all start-end
         | where $it.0.end + 1 < $it.1.start                 # only gaps are relevant
-        | each {|p| 
+        | each {|p|
             let cidr = cidr from int --start ($p.0.end + 1) --end $p.1.start
             let details = $cidr | cidr
             {subscription: '', vnetName: '', cidr: $cidr} | merge $details | merge {master: $k}
