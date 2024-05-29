@@ -7,7 +7,7 @@ use ./az
 # gen - custom commands overview
 def cco [] {
     let withType = {|data| $data | select name | merge ($data | get usage | split column ' - ' type usage)}
-    let cmd = scope commands | where is_custom == true and usage != '' and name not-in ['pwd'] | select name usage
+    let cmd = scope commands | where type == custom and usage != '' and name not-in ['pwd'] | select name usage
     let ali = scope aliases | where usage != '' | select name usage
 
     do $withType $cmd | append (do $withType $ali) | sort-by type name #group-by type | sort
@@ -18,11 +18,11 @@ def lsg [] = { ls -as | sort-by type name -i | grid -c }
 
 # gen - config files to vs code
 alias cfg = code -n ...[
-    $nu.config-path, 
-    $nu.env-path, 
+    $nu.config-path,
+    $nu.env-path,
     ([($env.HOME),'.zshrc'] | path join),
-    ([($env.HOME),'.config','atuin','config.toml'] | path join), 
-    ([($env.HOME),'.local','share','atuin','init2.nu'] | path join), 
+    ([($env.HOME),'.config','atuin','config.toml'] | path join),
+    ([($env.HOME),'.local','share','atuin','init2.nu'] | path join),
     ]
 
 # gen - overlay list
@@ -75,7 +75,7 @@ def sp [
 
 # app - az login browser with an selected op users
 def us [
-    query: string = ''    
+    query: string = ''
 ] {
     op select user -q $query | az login browser
 }
@@ -145,7 +145,7 @@ def gbd [branch: string = main] {
     | where $it != 'master' and $it != 'main'
     | each { |it| git branch -d $it }}
 
-# # git - switch branch    
+# # git - switch branch
 def gb [
     query: string = ''
 ] {
@@ -161,6 +161,6 @@ def gb [
         _ => $in
     }
     | par-each --keep-order {|r| {item: ($r.item | str trim)}}
-    | fzf select $query 
-    | if $in != null {git checkout $in.item} 
+    | fzf select $query
+    | if $in != null {git checkout $in.item}
 }
