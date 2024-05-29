@@ -1,6 +1,5 @@
 export module ./mgmt.nu
 export module ./sub.nu
-export module ./platform.nu
 export module ./vnet.nu
 
 use ./helpers/status.nu
