@@ -39,6 +39,9 @@ alias oh = overlay hide
 
 ### app ################################################################################
 
+# app - check for Mac OS updates
+alias osu = softwareupdate -l
+
 # app - ngrok as 1password plugin
 alias ngrok = op plugin run -- ngrok
 
