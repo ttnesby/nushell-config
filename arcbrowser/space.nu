@@ -8,10 +8,10 @@ def isRunning [] { (ps | where name =~ Arc | length) > 0 }
 export def set [
     --name (-n): string
 ] {
-    if ((sys).host.name == Darwin) and (isRunning) {
+    if ((sys host).name == Darwin) and (isRunning) {
         osascript (
-            $config.PATH 
-            | path expand 
+            $config.PATH
+            | path expand
             | path join $thisFolder
             | path join activateArcSpace.applescript
         ) $name
@@ -20,10 +20,10 @@ export def set [
 
 # module arcbrowser/space - get active space
 export def get [] {
-    if ((sys).host.name == Darwin) and (isRunning) {
+    if ((sys host).name == Darwin) and (isRunning) {
         osascript (
-            $config.PATH 
-            | path expand 
+            $config.PATH
+            | path expand
             | path join $thisFolder
             | path join getActiveArcSpace.applescript
         )
