@@ -21,6 +21,7 @@ alias cfg = code -n ...[
     $nu.config-path,
     $nu.env-path,
     ([($env.HOME),'.zshrc'] | path join),
+    ([($env.HOME),'.config','starship.toml'] | path join),
     ([($env.HOME),'.config','atuin','config.toml'] | path join),
     ([($env.HOME),'.local','share','atuin','init2.nu'] | path join),
     ]
