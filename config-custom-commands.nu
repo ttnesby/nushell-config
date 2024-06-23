@@ -1,6 +1,8 @@
 use ./fzf
 use ./op
 use ./az
+use ./err
+use ./batch
 
 ### gen ################################################################################
 
@@ -57,17 +59,7 @@ alias e = /opt/homebrew/bin/nvim
 
 # app - do daily brew
 def br [] {
-    brew doctor | lines
-    | match $in {
-        [$s] if $s != 'Your system is ready to brew.' => {return null}
-        _ => {
-            brew update | lines
-            | match $in {
-                [$s] if $s == 'Already up-to-date.' => {return null}
-                _ => {brew upgrade | lines}
-            }
-        }
-    }
+    batch sub -c $'(which brew | $in.path | first)' -s ['doctor', 'update', 'upgrade', 'cleanup']
 }
 
 # app - op select service principal -q $query | az login principal
