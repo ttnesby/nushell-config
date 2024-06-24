@@ -40,6 +40,11 @@ alias ou = overlay use
 # gen - overlay hide
 alias oh = overlay hide
 
+### cloud ##############################################################################
+
+# cloud - az + gc
+alias azgc = us ra; az sub set Identity; gc login browser --arc_space '@work-adm';
+
 ### app ################################################################################
 
 # app - check for Mac OS updates
