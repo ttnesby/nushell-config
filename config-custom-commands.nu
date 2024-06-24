@@ -43,8 +43,12 @@ alias oh = overlay hide
 ### cloud ##############################################################################
 
 # cloud - az + gc
-def azgc [] {
-    us ra; az sub set Identity; gc login browser --arc_space '@work-adm'
+def azgc [
+    --az_user(-u) = 'ra'
+    --az_sub(-s) = 'Identity'
+    --gc_arc_space(-a) = '@work-adm'
+] {
+    us $az_user; az sub set $az_sub; gc login browser --arc_space $gc_arc_space
 }
 
 ### app ################################################################################
