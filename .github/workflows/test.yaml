@@ -1,0 +1,22 @@
+name: test nushell setup
+
+on:
+  workflow_dispatch:
+
+jobs:
+  etl:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: check out repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      # # https://github.com/marketplace/actions/setup-nu
+      #
+      - name: set up nushell
+        uses: hustcer/setup-nu@main
+        with:
+          enable-plugins: true
+          version: "0.95.0"
