@@ -16,7 +16,7 @@ jobs:
       # # https://github.com/marketplace/actions/setup-nu
       #
       - name: set up nushell
-        uses: hustcer/setup-nu@main
+        uses: hustcer/setup-nu@v3.11
         with:
           enable-plugins: true
           version: "0.95.0"
