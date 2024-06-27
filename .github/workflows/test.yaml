@@ -26,4 +26,5 @@ jobs:
           version: "0.95.0"
 
       - name: test polars
-        run: [1 2 3] | polars into-df
+        run: |
+          [1 2 3] | polars into-df
