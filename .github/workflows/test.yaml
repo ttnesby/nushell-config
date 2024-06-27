@@ -3,6 +3,10 @@ name: test nushell setup
 on:
   workflow_dispatch:
 
+defaults:
+  run:
+    shell: nu {0}
+
 jobs:
   etl:
     runs-on: ubuntu-latest
@@ -20,3 +24,6 @@ jobs:
         with:
           enable-plugins: true
           version: "0.95.0"
+
+      - name: test polars
+        run: [1 2 3] | polars into-df
