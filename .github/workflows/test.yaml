@@ -20,9 +20,9 @@ jobs:
       # # https://github.com/marketplace/actions/setup-nu
       #
       - name: set up nushell
-        uses: hustcer/setup-nu@v3.11
+        uses: hustcer/setup-nu@v3.12
         with:
-          enable-plugins: true
+          enable-plugins: nu_plugin_polars
           version: "0.95.0"
 
       - name: test polars
