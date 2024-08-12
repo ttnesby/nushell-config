@@ -19,7 +19,7 @@ def cco [] {
 def lsg [] = { ls -as | sort-by type name -i | grid -c }
 
 # gen - config files to vs code
-alias cfg = code -n ...[
+alias cfg = zed -n ...[
     $nu.config-path,
     $nu.env-path,
     ([($env.HOME),'.zshrc'] | path join),
