@@ -18,7 +18,7 @@ def cco [] {
 # gen - dir content as grid, used in pwd hook
 def lsg [] = { ls -as | sort-by type name -i | grid -c }
 
-# gen - config files to vs code
+# gen - config files to zed
 alias cfg = zed -n ...[
     $nu.config-path,
     $nu.env-path,
