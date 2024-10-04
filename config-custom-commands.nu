@@ -8,9 +8,9 @@ use ./batch
 
 # gen - custom commands overview
 def cco [] {
-    let withType = {|data| $data | select name | merge ($data | get usage | split column ' - ' type usage)}
-    let cmd = scope commands | where type == custom and usage != '' and name not-in ['pwd'] | select name usage
-    let ali = scope aliases | where usage != '' | select name usage
+    let withType = {|data| $data | select name | merge ($data | get description | split column ' - ' type description)}
+    let cmd = scope commands | where type == custom and description != '' and name not-in ['pwd'] | select name description
+    let ali = scope aliases | where description != '' | select name description
 
     do $withType $cmd | append (do $withType $ali) | sort-by type name #group-by type | sort
 }
