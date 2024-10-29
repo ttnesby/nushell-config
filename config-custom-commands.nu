@@ -40,6 +40,12 @@ alias ou = overlay use
 # gen - overlay hide
 alias oh = overlay hide
 
+# gradle build
+alias b = ./gradlew build
+
+# gradle run
+alias r = ./gradlew run
+
 ### cloud ##############################################################################
 
 # cloud - az + gc
