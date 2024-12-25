@@ -16,7 +16,7 @@ def cco [] {
 }
 
 # gen - dir content as grid, used in pwd hook
-def lsg [] = { ls -as | sort-by type name -i | grid -c }
+def lsg []: any -> string { ls -as | sort-by type name -i | grid -c }
 
 # gen - config files to zed
 alias cfg = zed -n ...[
@@ -40,11 +40,14 @@ alias ou = overlay use
 # gen - overlay hide
 alias oh = overlay hide
 
-# gradle build
+# gradle - build
 alias b = ./gradlew build
 
-# gradle run
+# gradle - run
 alias r = ./gradlew run
+
+# idea - ultimate
+alias i = ~/idea .
 
 ### cloud ##############################################################################
 
