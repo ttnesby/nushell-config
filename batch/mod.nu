@@ -22,10 +22,11 @@ export def sub [
         let cmd_info = ($command | append $scmd | str join (char space))
         print $'# starting: ($cmd_info)'
 
-        run-external $command $scmd
+        let success = run-external $command $scmd
         | tee {print}
         | complete
         | handle_exit_code -m $'($cmd_info) failed!'
-        | do {|success:bool| if $success {()} else {break} } $in
+
+        if not $success { break }
     }
 }
