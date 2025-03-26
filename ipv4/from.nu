@@ -37,7 +37,7 @@ export def int [] {
     $in | par-each --keep-order {|it|
         $it
         | validateInt
-        | into bits
+        | into binary
         | split row (char space)
         | reverse
         | str join

@@ -34,7 +34,7 @@ export def bits [] {
         $it
         | validate
         | values
-        | each {|s| $s | into int | into bits | str substring 0..7}
+        | each {|s| $s | into int | into binary | str substring 0..7}
         | str join
     }
 }
