@@ -79,7 +79,9 @@ alias e = /opt/homebrew/bin/nvim
 
 # app - do daily brew
 def br [] {
-    batch sub -c $'(which brew | $in.path | first)' -s ['doctor', 'update', 'upgrade', 'cleanup']
+    # batch sub -c $'(which brew | $in.path | first)' -s ['doctor', 'update', 'upgrade', 'cleanup']
+    run-external $'(which brew | $in.path | first)' 'doctor' | tee {print}
+    batch sub -c $'(which brew | $in.path | first)' -s ['update', 'upgrade', 'cleanup']
 }
 
 # app - op select service principal -q $query | az login principal
