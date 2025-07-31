@@ -138,9 +138,9 @@ def --env rr [] {
 
 # Definer en custom command for git-repo dialog
 def --env gd [editor: string = "i"] {
-  let repo = tv git-repos .
-  if $repo != "" {
-    cd $repo
+  tv git-repos . |
+  if $in != "" {
+    cd $in
     match $editor {
       "i" => { ~/idea . }
       "r" => { ~/rustrover . }
