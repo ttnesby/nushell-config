@@ -46,9 +46,6 @@ alias b = ./gradlew build
 # gradle - run
 alias r = ./gradlew run
 
-# idea - ultimate
-alias i = ~/idea .
-
 ### cloud ##############################################################################
 
 # cloud - az + gc
@@ -70,9 +67,6 @@ alias ngrok = op plugin run -- ngrok
 
 # app - terraform
 alias tf = terraform
-
-# app - goland editor
-alias gol = ~/goland
 
 # app - neovim editor
 alias e = /opt/homebrew/bin/nvim
@@ -135,11 +129,25 @@ def --env rr [] {
     }
 }
 
-# cd - to git repo
-def --env gd [
-    query: string = ''
-] {
-    git-repos | fzf select $query | if $in != null {cd $in.git-repo}
+# # cd - to git repo
+# def --env gd [
+#     query: string = ''
+# ] {
+#     git-repos | fzf select $query | if $in != null {cd $in.git-repo}
+# }
+
+# Definer en custom command for git-repo dialog
+def --env gd [editor: string = "i"] {
+  let repo = tv git-repos .
+  if $repo != "" {
+    cd $repo
+    match $editor {
+      "i" => { ~/idea . }
+      "r" => { ~/rustrover . }
+      "z" => { zed . }
+      _ => { ^$editor . }  # Fallback til å kjøre editor direkte
+    }
+  }
 }
 
 # cd - to terraform solution within a repo
