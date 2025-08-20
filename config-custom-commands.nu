@@ -137,7 +137,7 @@ def --env rr [] {
 # }
 
 # Definer en custom command for git-repo dialog
-def --env gd [editor: string = "i"] {
+def --env gd [editor: string = ""] {
   tv git-repos . |
   if $in != "" {
     cd $in
@@ -145,8 +145,7 @@ def --env gd [editor: string = "i"] {
       "i" => { ~/idea . }
       "r" => { ~/rustrover . }
       "z" => { zed . }
-      _ => { ^$editor . }  # Fallback til å kjøre editor direkte
-    }
+      _ => { }  # kun bytte folder
   }
 }
 
