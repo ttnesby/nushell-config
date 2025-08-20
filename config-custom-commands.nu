@@ -146,6 +146,7 @@ def --env gd [editor: string = ""] {
       "r" => { ~/rustrover . }
       "z" => { zed . }
       _ => { }  # kun bytte folder
+   }
   }
 }
 
