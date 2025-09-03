@@ -35,21 +35,11 @@ export def bits [] {
 # module ipv4/from - convert int to ipv4
 export def int [] {
     $in | par-each --keep-order {|it|
-        $it
-        | validateInt
-        | into binary
-        | split row (char space)
-        | reverse
-        | str join
-        | match $in {
-        $s if ($s | str length) < 32 => {
-            ('0' | repeat (32 - ($s | str length)) | str join) + $s
-        }
-        $s if ($s | str length) > 32 => {
-            $s | str reverse | str substring 0..31
-        }
-        _ => $in
-        }
-        | bits
+        let num = $it | validateInt
+        let b1 = ($num // 16777216) mod 256
+        let b2 = ($num // 65536) mod 256
+        let b3 = ($num // 256) mod 256
+        let b4 = $num mod 256
+        $"($b1).($b2).($b3).($b4)"
     }
 }
