@@ -15,6 +15,14 @@ def cco [] {
     do $withType $cmd | append (do $withType $ali) | sort-by type name #group-by type | sort
 }
 
+#gen - empty trash can
+alias etc = osascript -e '
+tell application "Finder"
+    if (count of items in trash) > 0 then
+        empty trash
+    end if
+end tell'
+
 # gen - dir content as grid, used in pwd hook
 def lsg []: any -> string { ls -as | sort-by type name -i | grid -c }
 
