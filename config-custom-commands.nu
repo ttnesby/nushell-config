@@ -80,7 +80,7 @@ alias tf = terraform
 alias e = /opt/homebrew/bin/nvim
 
 # app - do daily brew
-alias br = do {brew doctor; brew update; brew upgrade; brew cleanup}
+alias br = do {brew update; brew upgrade; brew cleanup; brew doctor}
 
 # app - op select service principal -q $query | az login principal
 def sp [
