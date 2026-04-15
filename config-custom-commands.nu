@@ -186,7 +186,7 @@ def gbd [branch: string = main] {
     | where $it != 'master' and $it != 'main'
     | each { |it| git branch -d $it }}
 
-# # git - switch branch
+# git - switch branch
 def gb [
     query: string = ''
 ] {
@@ -204,4 +204,23 @@ def gb [
     | par-each --keep-order {|r| {item: ($r.item | str trim)}}
     | fzf select $query
     | if $in != null {git checkout $in.item}
+}
+
+
+### iTerm ###############################################################################
+
+# iterm - new tab
+def nt [cmd?: string] {
+    let dir = $env.PWD
+    let run = if ($cmd | is-empty) { "" } else { $"; ($cmd)" }
+    osascript -e $"
+        tell application \"iTerm2\"
+            tell current window
+                create tab with default profile
+                tell current session of current tab
+                    write text \"cd '($dir)'($run)\"
+                end tell
+            end tell
+        end tell
+    "
 }
