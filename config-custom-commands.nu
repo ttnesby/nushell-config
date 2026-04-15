@@ -216,10 +216,12 @@ def nt [cmd?: string] {
     osascript -e $"
         tell application \"iTerm2\"
             tell current window
+                set originalTab to current tab
                 create tab with default profile
                 tell current session of current tab
                     write text \"cd '($dir)'($run)\"
                 end tell
+                select originalTab
             end tell
         end tell
     "
