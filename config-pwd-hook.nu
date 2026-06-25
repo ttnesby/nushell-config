@@ -18,10 +18,6 @@ $env.config = ($env.config | upsert hooks {
                 }
                 code: "overlay use utilities.nu"
             }
-            {
-                condition: {|_,_| true}
-                code: {|_,_| sdkman-auto-env }
-            }
         ]
     }
 })
