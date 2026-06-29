@@ -421,3 +421,10 @@ export def code2rm-style-test [
     print $"\nFerdig. Se ($out_dir)/"
     ^open $out_dir
 }
+
+
+def --wrapped mvn [...args] {
+    with-env { GITHUB_TOKEN: "op://Primary/llpaipfma4meu5tc27hxuyxy7e/password" } {
+        op run -- mvn ...$args
+    }
+}
