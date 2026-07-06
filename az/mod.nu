@@ -1,6 +1,6 @@
-export module ./mgmt.nu
-export module ./sub.nu
-export module ./vnet.nu
+export use ./mgmt.nu
+export use ./sub.nu
+export use ./vnet.nu
 
 use ./helpers/status.nu
 use ../arcbrowser

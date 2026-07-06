@@ -25,16 +25,16 @@ def validateInt [] {
 
 # module ipv4/from - convert string of 32 bits to ipv4
 export def bits [] {
-    $in | par-each --keep-order {|s|
+    $in | each {|s|
         [0..7, 8..15, 16..23, 24..31]
-        | par-each --keep-order {|r| $s | validateBits | range $r | str join | into int -r 2 | into string }
+        | par-each --keep-order {|r| $s | validateBits | slice $r | str join | into int -r 2 | into string }
         | str join '.'
     }
 }
 
 # module ipv4/from - convert int to ipv4
 export def int [] {
-    $in | par-each --keep-order {|it|
+    $in | each {|it|
         let num = $it | validateInt
         let b1 = ($num // 16777216) mod 256
         let b2 = ($num // 65536) mod 256

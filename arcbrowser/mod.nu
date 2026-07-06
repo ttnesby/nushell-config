@@ -1,1 +1,1 @@
-export module ./space.nu
+export use ./space.nu

@@ -1,4 +1,4 @@
-export module ./prj.nu
+export use ./prj.nu
 
 use ../arcbrowser
 

@@ -1,4 +1,4 @@
-export module ./from.nu
+export use ./from.nu
 
 use std repeat
 use ../ipv4
@@ -64,5 +64,5 @@ def info [] {
 #
 # https://www.ipconvertertools.com/convert-cidr-manually-binary
 export def main [] {
-    $in | par-each --keep-order {|it| $it | validate | info }
+    $in | each {|it| $it | validate | info }
 }

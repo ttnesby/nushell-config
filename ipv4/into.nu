@@ -19,7 +19,7 @@ def validate [] {
 
 # module ipv4/into - convert ipv4 address to int
 export def int [] {
-    $in | par-each --keep-order {|it|
+    $in | each {|it|
         $it
         | validate
         | values
@@ -30,11 +30,11 @@ export def int [] {
 
 # module ipv4/into - convert ipv4 address into string of 32 bits
 export def bits [] {
-    $in | par-each --keep-order {|it|
+    $in | each {|it|
         $it
         | validate
         | values
-        | each {|s| $s | into int | into binary | str substring 0..7}
+        | each {|s| $s | into int | format number | get binary | str substring 2.. | fill --alignment right --character '0' --width 8}
         | str join
     }
 }

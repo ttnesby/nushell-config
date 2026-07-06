@@ -1,1 +1,1 @@
-export module ./pr.nu
+export use ./pr.nu
