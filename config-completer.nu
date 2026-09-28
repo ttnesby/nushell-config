@@ -13,8 +13,9 @@ let carapace_completer = {|spans: list<string>|
 }
 
 # alias expansion and different completers
-let external_completer = {|spans|
-    let expanded_alias = (scope aliases | where name == $spans.0 | get 0 | get expansion)
+let external_completer = {|place|
+    let spans = $place.command
+    let expanded_alias = (scope aliases | where name == $spans.0 | get -o 0.expansion)
 
     let spans = if $expanded_alias != null {
         $spans
