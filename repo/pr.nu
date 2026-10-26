@@ -13,8 +13,8 @@ def main-root [] {
 }
 
 # Intern: parse `git worktree list` til en tabell { path, branch }.
-def worktrees [] {
-    git worktree list --porcelain
+def worktrees [dir: path = '.'] {
+    git -C $dir worktree list --porcelain
     | split row "\n\n"
     | where ($it | str trim | is-not-empty)
     | each { |block|
@@ -25,9 +25,9 @@ def worktrees [] {
     }
 }
 
-# Vis alle worktrees for dette repoet.
-export def list [] {
-    worktrees
+# Vis alle worktrees for dette repoet (eller repoet i dir).
+export def list [dir: path = '.'] {
+    worktrees $dir
 }
 
 # Opprett ny branch i egen worktree (søsken til hovedklonen), tom commit + draft PR.

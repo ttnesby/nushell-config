@@ -31,6 +31,8 @@ use ($config.PATH | path join gc)
 use ($config.PATH | path join ipv4)
 use ($config.PATH | path join op)
 use ($config.PATH | path join arcbrowser)
+# supplerende stønad: lokalt testmiljø for su-se-bakover + su-se-framover (se `help sup`)
+use ($config.PATH | path join sup)
 
 source ($config.PATH | path join config-oh-my-posh.nu)
 source ($config.PATH | path join config-completer.nu)
