@@ -205,23 +205,27 @@ export def "frontend start" [
     }
 
     let cmd = if ($dir | path join 'node_modules' | path exists) { 'mise exec -- npm start' } else { 'mise exec -- npm ci; mise exec -- npm start' }
-    print $"Starter frontend fra ($dir) i ny iTerm-fane: ($cmd)"
-    iterm-tab $dir $cmd
+    print $"Starter frontend fra ($dir) i iTerm-fanen 'sup frontend': ($cmd)"
+    iterm-run frontend $dir $cmd
 }
 
-# Stopp frontend (hele `npm start`-gruppen: nodemon, tsx og vite).
+# Stopp frontend (hele `npm start`-gruppen: nodemon, tsx og vite) og lukk fanen.
 export def "frontend stop" [] {
     let pid = (listener $PORTS.bff) | default (listener $PORTS.vite)
-    if $pid == null { print 'Frontend kjører ikke'; return }
-    let pgid = (^ps -o pgid= -p $pid | str trim | into int)
-    let leader = (^ps -o command= -p $pgid | str trim)
-    print $"Stopper frontend \((cwd-of $pid)\)"
-    if ($leader | str starts-with 'npm') {
-        ^kill -TERM -- $"-($pgid)"
+    if $pid == null {
+        print 'Frontend kjører ikke'
     } else {
-        kill $pid
+        let pgid = (^ps -o pgid= -p $pid | str trim | into int)
+        let leader = (^ps -o command= -p $pgid | str trim)
+        print $"Stopper frontend \((cwd-of $pid)\)"
+        if ($leader | str starts-with 'npm') {
+            ^kill -TERM -- $"-($pgid)"
+        } else {
+            kill $pid
+        }
+        wait-for 'frontend stopp' 30 { (listener $PORTS.bff) == null and (listener $PORTS.vite) == null }
     }
-    wait-for 'frontend stopp' 30 { (listener $PORTS.bff) == null and (listener $PORTS.vite) == null }
+    iterm-close frontend
 }
 
 # Intern: Postgres for valgt worktree; stopper andre bakover-prosjekter som vil ha samme port.

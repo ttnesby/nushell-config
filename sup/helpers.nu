@@ -95,28 +95,33 @@ export def cwd-of [pid: int]: nothing -> string {
     ^lsof -a -p $pid -d cwd -Fn | lines | where ($it | str starts-with 'n') | first | str substring 1..
 }
 
-# Stopp prosessen på backend-porten (også når den er startet fra IntelliJ).
+# Stopp prosessen på backend-porten (også når den er startet fra IntelliJ) og lukk fanen.
 # Returnerer worktreen den kjørte fra, eller null.
-export def stop-backend []: nothing -> any {
+export def stop-backend [
+    --keep-tab   # behold fanen (for omstart i samme fane)
+]: nothing -> any {
     let pid = (listener $PORTS.backend)
-    if $pid == null { print 'Backend kjører ikke'; return null }
-    let dir = (cwd-of $pid)
-    print $"Stopper backend \(pid ($pid), ($dir)\)"
-    kill $pid
-    wait-for 'backend stopp' 30 { (listener $PORTS.backend) == null }
+    let dir = if $pid == null { print 'Backend kjører ikke'; null } else {
+        let dir = (cwd-of $pid)
+        print $"Stopper backend \(pid ($pid), ($dir)\)"
+        kill $pid
+        wait-for 'backend stopp' 30 { (listener $PORTS.backend) == null }
+        $dir
+    }
+    if not $keep_tab { iterm-close backend }
     $dir
 }
 
-# Start backend (LocalApplicationWithTestdata via Gradle) fra en worktree i ny iTerm-fane.
+# Start backend (LocalApplicationWithTestdata via Gradle) fra en worktree i backend-fanen.
 export def start-backend [dir: path] {
-    print $"Starter backend fra ($dir) i ny iTerm-fane"
-    iterm-tab $dir $"mise exec -- ./gradlew --init-script '($INIT_SCRIPT)' :web-regresjonstest:supLocal"
+    print $"Starter backend fra ($dir) i iTerm-fanen 'sup backend'"
+    iterm-run backend $dir $"mise exec -- ./gradlew --init-script '($INIT_SCRIPT)' :web-regresjonstest:supLocal"
 }
 
-# Kjør en operasjon med backend stoppet, og start den igjen i samme worktree hvis den kjørte.
+# Kjør en operasjon med backend stoppet, og start den igjen i samme worktree (og fane) hvis den kjørte.
 # Backend startes igjen også når operasjonen feiler.
 export def with-backend-stopped [op: closure] {
-    let dir = (stop-backend)
+    let dir = (stop-backend --keep-tab)
     let err = try { do $op | ignore; null } catch {|e| $e }
     if $dir != null { start-backend $dir }
     if $err != null { error make { msg: $err.msg } }
@@ -149,20 +154,93 @@ export def wait-for [what: string, timeout: int, check: closure] {
     }
 }
 
-# Ny iTerm-fane i gitt mappe som kjører en kommando (samme mønster som `nt`).
+# ── iTerm-faner ───────────────────────────────────────────────
+# Hver tjeneste (backend/frontend) får én fane. Fanens økt-UUID lagres i en tilstandsfil,
+# slik at fanen gjenbrukes ved omstart og lukkes ved stopp – uansett hvilket vindu den ligger i.
 # NB: mise-hooken bytter verktøy først ved neste prompt, ikke etter `cd` på samme linje,
 # så kommandoer som trenger mappens Java/Node må kjøres via `mise exec --`.
-export def iterm-tab [dir: path, cmd: string] {
-    osascript -e $"
-        tell application \"iTerm2\"
+
+const ITERM = 'com.googlecode.iterm2'
+const SHELLS = [login nu zsh bash sh]
+
+def tabs-file []: nothing -> path {
+    '~/.local/state/sup/tabs.nuon' | path expand
+}
+
+def tabs []: nothing -> record {
+    let f = (tabs-file)
+    if ($f | path exists) { open $f } else { {} }
+}
+
+def tabs-set [role: string, id: any] {
+    let f = (tabs-file)
+    mkdir ($f | path dirname)
+    tabs | upsert $role $id | save --force $f
+}
+
+# AppleScript som finner økten med gitt UUID i alle vinduer og kjører `action` på den (variabel s).
+def with-session [id: string, action: string]: nothing -> string {
+    ^osascript -e $"
+        tell application id \"($ITERM)\"
+            repeat with w in windows
+                repeat with t in tabs of w
+                    repeat with s in sessions of t
+                        if id of s is \"($id)\" then
+                            ($action)
+                        end if
+                    end repeat
+                end repeat
+            end repeat
+            return \"\"
+        end tell
+    " | complete | get stdout | str trim
+}
+
+# Er økten ledig, dvs. bare skallet kjører i den? (tty fra iTerm, prosesser fra ps)
+def session-idle [tty: string]: nothing -> bool {
+    ^ps -t ($tty | str replace '/dev/' '') -o command=
+    | lines
+    | each {|c| $c | str trim | split row ' ' | first | path basename | str trim --left --char '-' }
+    | all {|c| $c in $SHELLS }
+}
+
+# Kjør en kommando i tjenestens fane: gjenbruk den hvis den finnes og er ledig, ellers ny fane.
+export def iterm-run [role: string, dir: path, cmd: string] {
+    let line = $"cd '($dir)'; ($cmd)"
+    let id = (tabs | get -o $role)
+    if $id != null {
+        let tty = (with-session $id 'return tty of s')
+        if $tty != '' and (session-idle $tty) {
+            with-session $id $"tell s to write text \"($line)\"
+                            return \"ok\"" | ignore
+            print $"  \(gjenbruker fanen 'sup ($role)'\)"
+            return
+        }
+    }
+    let new_id = (^osascript -e $"
+        tell application id \"($ITERM)\"
+            if \(count of windows\) = 0 then create window with default profile
             tell current window
                 set originalTab to current tab
-                create tab with default profile
-                tell current session of current tab
-                    write text \"cd '($dir)'; ($cmd)\"
+                set newTab to \(create tab with default profile\)
+                tell current session of newTab
+                    set name to \"sup ($role)\"
+                    write text \"($line)\"
+                    set sid to id
                 end tell
                 select originalTab
             end tell
+            return sid
         end tell
-    " | ignore
+    " | str trim)
+    tabs-set $role $new_id
+}
+
+# Lukk tjenestens fane hvis den finnes.
+export def iterm-close [role: string] {
+    let id = (tabs | get -o $role)
+    if $id == null { return }
+    with-session $id 'close s
+                            return "ok"' | ignore
+    tabs-set $role null
 }
