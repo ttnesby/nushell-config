@@ -155,7 +155,7 @@ export def doctor [] {
         (do $tool gke-gcloud-auth-plugin 'gcloud components install gke-gcloud-auth-plugin, og google-cloud-sdk/bin på PATH (env.nu)')
         (do $tool pg_dump 'brew install libpq, og libpq/bin på PATH (env.nu)')
         (do $tool pg_isready 'brew install libpq, og libpq/bin på PATH (env.nu)')
-        { check: 'gcloud-innlogging', ok: ($account | is-not-empty), fix: 'nais auth login' }
+        { check: 'gcloud-innlogging', ok: (($account | is-not-empty) and (gcloud-login-valid)), fix: 'nais auth login' }
         { check: $'kubeconfig ($DEV.env)', ok: ($DEV.env in $contexts), fix: 'nais kubeconfig' }
     ]
     | update fix {|r| if $r.ok { '' } else { $r.fix } }

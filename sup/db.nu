@@ -19,6 +19,8 @@ export def dump [
     let user = (gcloud config get account | str trim)
     if ($user | is-empty) { error make { msg: 'Ikke logget inn i gcloud. Kjør `nais auth login`.' } }
     if (listener $DEV.port) != null { error make { msg: $"Port ($DEV.port) er opptatt; stopp den gamle proxyen først." } }
+    # proxyen kjører som bakgrunnsjobb uten terminal og kan ikke be om ny innlogging selv
+    ensure-gcloud-login
 
     if $backup { backup | ignore }
 
@@ -128,5 +130,6 @@ export def restore [
 export def grant [
     --reason(-r): string = 'kopiererdevdata'
 ] {
+    ensure-gcloud-login
     nais cloudsql grant $DEV.app -e $DEV.env -t $DEV.team -r $reason
 }

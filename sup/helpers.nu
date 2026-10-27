@@ -122,6 +122,22 @@ export def with-backend-stopped [op: closure] {
     if $err != null { error make { msg: $err.msg } }
 }
 
+# Er gcloud-innloggingen (bruker + ADC, som Cloud SQL-proxyen bruker) gyldig uten ny innlogging?
+export def gcloud-login-valid []: nothing -> bool {
+    (^gcloud auth print-access-token | complete).exit_code == 0 and (^gcloud auth application-default print-access-token | complete).exit_code == 0
+}
+
+# Sørg for gyldig gcloud-innlogging før kommandoer som kjører uten terminal (proxy i bakgrunnen).
+# Google krever jevnlig ny innlogging; da logges du inn på nytt i nettleseren via `nais auth login`.
+export def ensure-gcloud-login [] {
+    if (gcloud-login-valid) { return }
+    print 'gcloud-innloggingen har utløpt, logger inn på nytt (nettleser)'
+    ^nais auth login --yes
+    if not (gcloud-login-valid) {
+        error make { msg: 'gcloud-innloggingen er fortsatt ikke gyldig. Kjør `nais auth login` manuelt.' }
+    }
+}
+
 # Vent til en betingelse er sann, med timeout i sekunder.
 export def wait-for [what: string, timeout: int, check: closure] {
     let start = (date now)
