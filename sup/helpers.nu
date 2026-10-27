@@ -96,12 +96,30 @@ export def cwd-of [pid: int]: nothing -> string {
 }
 
 # Stopp prosessen på backend-porten (også når den er startet fra IntelliJ).
-export def stop-backend [] {
+# Returnerer worktreen den kjørte fra, eller null.
+export def stop-backend []: nothing -> any {
     let pid = (listener $PORTS.backend)
-    if $pid == null { print 'Backend kjører ikke'; return }
-    print $"Stopper backend \(pid ($pid), (cwd-of $pid)\)"
+    if $pid == null { print 'Backend kjører ikke'; return null }
+    let dir = (cwd-of $pid)
+    print $"Stopper backend \(pid ($pid), ($dir)\)"
     kill $pid
     wait-for 'backend stopp' 30 { (listener $PORTS.backend) == null }
+    $dir
+}
+
+# Start backend (LocalApplicationWithTestdata via Gradle) fra en worktree i ny iTerm-fane.
+export def start-backend [dir: path] {
+    print $"Starter backend fra ($dir) i ny iTerm-fane"
+    iterm-tab $dir $"mise exec -- ./gradlew --init-script '($INIT_SCRIPT)' :web-regresjonstest:supLocal"
+}
+
+# Kjør en operasjon med backend stoppet, og start den igjen i samme worktree hvis den kjørte.
+# Backend startes igjen også når operasjonen feiler.
+export def with-backend-stopped [op: closure] {
+    let dir = (stop-backend)
+    let err = try { do $op | ignore; null } catch {|e| $e }
+    if $dir != null { start-backend $dir }
+    if $err != null { error make { msg: $err.msg } }
 }
 
 # Vent til en betingelse er sann, med timeout i sekunder.

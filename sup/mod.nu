@@ -176,13 +176,12 @@ export def "backend start" [
     if (compose-project $dir) != $db.project {
         print $"Advarsel: Postgres på ($PORTS.postgres) tilhører ($db.project), ikke denne worktreen."
     }
-    print $"Starter backend fra ($dir) i ny iTerm-fane"
-    iterm-tab $dir $"mise exec -- ./gradlew --init-script '($INIT_SCRIPT)' :web-regresjonstest:supLocal"
+    start-backend $dir
 }
 
 # Stopp backend (prosessen på port 8080, også når den er startet fra IntelliJ).
 export def "backend stop" [] {
-    stop-backend
+    stop-backend | ignore
 }
 
 # Start frontend (`npm start`) i ny iTerm-fane. Lenker .env og kjører npm ci ved behov.

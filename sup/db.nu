@@ -4,7 +4,8 @@ use ./helpers.nu *
 
 const TRUNCATE_SQL = r#'DO $$ BEGIN EXECUTE (SELECT 'TRUNCATE ' || string_agg(format('%I', tablename), ', ') || ' CASCADE' FROM pg_tables WHERE schemaname = 'public' AND tablename <> 'flyway_schema_history'); END $$;'#
 
-# Kopier data fra dev-gcp til lokal Postgres (proxy, Flyway-sjekk, dump, tøm, import, rydd).
+# Kopier data fra dev-gcp til lokal Postgres (proxy, Flyway-sjekk, dump, tøm + import, rydd).
+# Backend kjører under dumpen og stoppes bare under tøm + import; den startes igjen etterpå.
 export def dump [
     --backup    # ta backup av lokal database først (sup db backup)
     --keep      # behold dumpfila (flyttes til ~/pgDump)
@@ -19,11 +20,7 @@ export def dump [
     if ($user | is-empty) { error make { msg: 'Ikke logget inn i gcloud. Kjør `nais auth login`.' } }
     if (listener $DEV.port) != null { error make { msg: $"Port ($DEV.port) er opptatt; stopp den gamle proxyen først." } }
 
-    if (listener $PORTS.backend) != null {
-        print 'Stopper backend under kopieringen'
-        stop-backend
-    }
-    if $backup { backup }
+    if $backup { backup | ignore }
 
     let tmp = (mktemp -d)
     let log = ($tmp | path join 'proxy.log')
@@ -59,14 +56,14 @@ export def dump [
         job kill $proxy
         print $"Dump ferdig: ((ls $file | get 0.size))"
 
-        print $"Tømmer lokale tabeller i ($db.project)"
-        local-sql $TRUNCATE_SQL | ignore
-
-        print 'Importerer (én transaksjon, stopper ved første feil)'
-        open --raw $file | ^docker exec -i $db.name psql -U $DB.user -d $DB.name -q -v ON_ERROR_STOP=1 --single-transaction -o /dev/null
+        with-backend-stopped {
+            print $"Tømmer og importerer i ($db.project) \(én transaksjon, ruller tilbake ved feil\)"
+            open --raw $file | ^docker exec -i $db.name psql -U $DB.user -d $DB.name -q -v ON_ERROR_STOP=1 --single-transaction -o /dev/null -c $TRUNCATE_SQL -f -
+        }
     } catch {|err|
         do -i { job kill $proxy }
-        print $"Proxy-logg: ($log)"
+        if ($log | path exists) { print 'Proxy-logg:'; open --raw $log | lines | last 10 | each { print $"  ($in)" } | ignore }
+        rm -rf $tmp
         error make { msg: $err.msg }
     }
 
@@ -78,7 +75,7 @@ export def dump [
     }
     rm -rf $tmp
 
-    print 'Ferdig. Start backend med `sup backend start`.'
+    print 'Ferdig.'
     counts
 }
 
@@ -88,12 +85,13 @@ export def counts [] {
     | each {|t| { table: $t, rows: (local-sql $"select count\(*\) from ($t)" | str trim | into int) } }
 }
 
-# Tøm alle tabeller unntatt Flyway-historikken. Stopper backend først.
+# Tøm alle tabeller unntatt Flyway-historikken. Backend stoppes og startes igjen hvis den kjørte.
 export def truncate [] {
     let db = (require-db)
-    stop-backend
-    print $"Tømmer lokale tabeller i ($db.project)"
-    local-sql $TRUNCATE_SQL | ignore
+    with-backend-stopped {
+        print $"Tømmer lokale tabeller i ($db.project)"
+        local-sql $TRUNCATE_SQL
+    }
 }
 
 # Åpne psql mot lokal database.
@@ -111,7 +109,7 @@ export def backup []: nothing -> path {
     $file
 }
 
-# Gjenopprett lokal database fra en backup (sup db backup). Stopper backend først.
+# Gjenopprett lokal database fra en backup (sup db backup). Backend stoppes og startes igjen hvis den kjørte.
 export def restore [
     file?: path   # backup-fil (default: velg blant ~/pgDump/*.dump)
 ] {
@@ -120,9 +118,10 @@ export def restore [
         use ../fzf
         ls ('~/pgDump' | path expand | path join '*.dump' | into glob) | sort-by -r modified | select name size modified | fzf select | get name
     }
-    stop-backend
-    print $"Gjenoppretter ($db.project) fra ($src)"
-    open --raw $src | ^docker exec -i $db.name pg_restore -U $DB.user -d $DB.name --clean --if-exists --no-owner --single-transaction
+    with-backend-stopped {
+        print $"Gjenoppretter ($db.project) fra ($src)"
+        open --raw $src | ^docker exec -i $db.name pg_restore -U $DB.user -d $DB.name --clean --if-exists --no-owner --single-transaction
+    }
 }
 
 # Gi deg selv personlig tilgang til dev-databasen (engangs, oppretter IAM-bruker).
