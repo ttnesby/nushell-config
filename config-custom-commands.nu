@@ -152,16 +152,17 @@ def --env rr [] {
 # }
 
 # Definer en custom command for git-repo dialog
-def --env gd [editor: string = ""] {
-  tv git-repos . |
+def --env gd [
+  query: string = ""  # fuzzy forhåndsutfylt søk, f.eks. `gd bakover`
+  --idea (-i)         # åpne i IntelliJ
+  --rust (-r)         # åpne i RustRover
+  --zed (-z)          # åpne i Zed
+] {
+  let source = "fd -g .git -HL -d 6 --prune ~/gitHub --exec dirname '{}'"
+  tv git-repos --source-command $source --input $query --select-1 |
   if $in != "" {
     cd $in
-    match $editor {
-      "i" => { ~/idea . }
-      "r" => { ~/rustrover . }
-      "z" => { zed . }
-      _ => { }  # kun bytte folder
-   }
+    if $idea { idea . } else if $rust { rustrover . } else if $zed { zed . }
   }
 }
 
