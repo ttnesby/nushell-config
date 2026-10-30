@@ -48,11 +48,19 @@ alias ou = overlay use
 # gen - overlay hide
 alias oh = overlay hide
 
+# gradle - ./gradlew med GitHub Packages-token fra gh-CLI, kun i gradle-prosessen
+# (krever en gang: gh auth refresh -h github.com -s read:packages)
+def --wrapped gradlew [...args] {
+    with-env { GITHUB_ACTOR: "ttnesby", GITHUB_TOKEN: (gh auth token) } {
+        ./gradlew ...$args
+    }
+}
+
 # gradle - build
-alias b = ./gradlew build
+alias b = gradlew build
 
 # gradle - run
-alias r = ./gradlew run
+alias r = gradlew run
 
 ### cloud ##############################################################################
 
